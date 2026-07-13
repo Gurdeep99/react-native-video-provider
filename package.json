@@ -6,7 +6,7 @@
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
     ".": {
-      "react-native-au-video-source": "./src/index.tsx",
+      "react-native-au-video-source": "./src/index.ts",
       "types": "./lib/typescript/src/index.d.ts",
       "default": "./lib/module/index.js"
     },
@@ -75,6 +75,9 @@
     "turbo": "^2.9.16",
     "typescript": "^6.0.3"
   },
+  "dependencies": {
+    "zustand": "^5.0.0"
+  },
   "peerDependencies": {
     "react": "*",
     "react-native": "*"
@@ -103,7 +106,7 @@
   },
   "codegenConfig": {
     "name": "AuVideoSpec",
-    "type": "modules",
+    "type": "all",
     "jsSrcsDir": "src",
     "android": {
       "javaPackageName": "com.auvideo"
