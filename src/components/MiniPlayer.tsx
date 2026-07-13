@@ -1,4 +1,10 @@
-import { Pressable, StyleSheet, Text, View, type ViewProps } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewProps,
+} from 'react-native';
 import { usePlayback } from '../hooks/usePlayback';
 import { useVideoManager } from '../provider/VideoContext';
 import { VideoSurface } from './VideoSurface';
@@ -36,7 +42,11 @@ export function MiniPlayer({
           {title}
         </Text>
       </Pressable>
-      <Pressable style={styles.button} hitSlop={8} onPress={() => manager.toggle()}>
+      <Pressable
+        style={styles.button}
+        hitSlop={8}
+        onPress={() => manager.toggle()}
+      >
         <Text style={styles.icon}>{playing ? '❙❙' : '▶'}</Text>
       </Pressable>
       {onClose ? (

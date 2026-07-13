@@ -117,14 +117,22 @@ export function VideoControls({
             }}
             hitSlop={16}
           >
-            <Text style={styles.playIcon}>{buffering ? '…' : playing ? '❙❙' : '▶'}</Text>
+            <Text style={styles.playIcon}>
+              {buffering ? '…' : playing ? '❙❙' : '▶'}
+            </Text>
           </Pressable>
 
           <View style={styles.bottomRow}>
             <Text style={styles.time}>{formatTime(position)}</Text>
-            <Pressable style={styles.track} onLayout={onTrackLayout} onPress={onTrackPress}>
+            <Pressable
+              style={styles.track}
+              onLayout={onTrackLayout}
+              onPress={onTrackPress}
+            >
               <View style={styles.trackBg} />
-              <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />
+              <View
+                style={[styles.trackFill, { width: `${progress * 100}%` }]}
+              />
             </Pressable>
             <Text style={styles.time}>{formatTime(duration)}</Text>
             {showFullscreenButton ? (

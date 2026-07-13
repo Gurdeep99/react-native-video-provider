@@ -17,12 +17,7 @@ export interface VideoSource {
 export type ResizeMode = 'contain' | 'cover' | 'stretch';
 
 export type PlayerMode =
-  | 'inline'
-  | 'fullscreen'
-  | 'floating'
-  | 'pip'
-  | 'background'
-  | 'hidden';
+  'inline' | 'fullscreen' | 'floating' | 'pip' | 'background' | 'hidden';
 
 export type PlaybackStatus =
   | 'idle'

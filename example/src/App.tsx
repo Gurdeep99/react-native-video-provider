@@ -86,7 +86,10 @@ function DetailScreen({
       {/* Same source id ⇒ the engine hands off: position and buffer survive. */}
       <VideoPlayer source={video} style={styles.playerLarge} />
       <View style={styles.row}>
-        <Pressable style={styles.button} onPress={() => player.enterFullscreen()}>
+        <Pressable
+          style={styles.button}
+          onPress={() => player.enterFullscreen()}
+        >
           <Text style={styles.buttonText}>Fullscreen</Text>
         </Pressable>
         <Pressable

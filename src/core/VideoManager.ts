@@ -1,6 +1,10 @@
 import type { EventSubscription } from 'react-native';
 import NativeAuVideo, { type NativeVideoSource } from '../NativeAuVideo';
-import { createVideoStore, initialVideoState, type VideoStore } from '../state/createVideoStore';
+import {
+  createVideoStore,
+  initialVideoState,
+  type VideoStore,
+} from '../state/createVideoStore';
 import type { VideoEventMap, VideoEventName } from '../types/events';
 import type {
   PlaybackStatus,
@@ -177,7 +181,7 @@ export class VideoManager {
     if (status === 'paused' && prev.status !== 'paused') {
       this.events.emit('onPause', undefined);
     }
-    if (status === 'buffering' !== (prev.status === 'buffering')) {
+    if ((status === 'buffering') !== (prev.status === 'buffering')) {
       this.events.emit('onBuffer', { buffering: status === 'buffering' });
     }
   }
@@ -248,7 +252,10 @@ export class VideoManager {
   /** @param position seconds */
   seek(position: number): void {
     const duration = this.store.getState().duration;
-    const clamped = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
+    const clamped = Math.max(
+      0,
+      duration > 0 ? Math.min(position, duration) : position
+    );
     this.set({ position: clamped });
     NativeAuVideo.seekTo(clamped);
   }

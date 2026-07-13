@@ -19,7 +19,11 @@ export interface VideoSurfaceProps extends ViewProps {
  * <VideoSurface surfaceId="feed" style={{ aspectRatio: 16 / 9 }} />
  * ```
  */
-export function VideoSurface({ surfaceId, autoAttach = false, ...rest }: VideoSurfaceProps) {
+export function VideoSurface({
+  surfaceId,
+  autoAttach = false,
+  ...rest
+}: VideoSurfaceProps) {
   const manager = useVideoManager();
 
   useEffect(() => {

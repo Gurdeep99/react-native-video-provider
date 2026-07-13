@@ -24,8 +24,7 @@ export function useVideoEvents(handlers: VideoEventHandlers): void {
     const subs = names.map((name) =>
       manager.addListener(name, (payload) => {
         const handler = ref.current[name] as
-          | ((p: VideoEventMap[typeof name]) => void)
-          | undefined;
+          ((p: VideoEventMap[typeof name]) => void) | undefined;
         handler?.(payload);
       })
     );

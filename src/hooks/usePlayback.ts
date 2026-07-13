@@ -15,7 +15,9 @@ const identity = (s: VideoState): VideoState => s;
  */
 export function usePlayback(): VideoState;
 export function usePlayback<T>(selector: (state: VideoState) => T): T;
-export function usePlayback<T>(selector?: (state: VideoState) => T): T | VideoState {
+export function usePlayback<T>(
+  selector?: (state: VideoState) => T
+): T | VideoState {
   const manager = useVideoManager();
   return useStore(
     manager.store,

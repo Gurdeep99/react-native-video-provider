@@ -30,7 +30,10 @@ export function FloatingPlayer({ width = 200 }: FloatingPlayerProps) {
 
   const height = (width * 9) / 16;
   const pan = useRef(
-    new Animated.ValueXY({ x: screen.width - width - 12, y: screen.height - height - 96 })
+    new Animated.ValueXY({
+      x: screen.width - width - 12,
+      y: screen.height - height - 96,
+    })
   ).current;
 
   const responder = useRef(

@@ -76,16 +76,41 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
 
   // ------------------------------------------------------------- commands
 
-  override fun play() = UiThreadUtil.runOnUiThread { PlayerCore.play() }
-  override fun pause() = UiThreadUtil.runOnUiThread { PlayerCore.pause() }
-  override fun stop() = UiThreadUtil.runOnUiThread { PlayerCore.stop() }
-  override fun seekTo(position: Double) = UiThreadUtil.runOnUiThread { PlayerCore.seekTo(position) }
-  override fun setRate(rate: Double) = UiThreadUtil.runOnUiThread { PlayerCore.setRate(rate) }
-  override fun setVolume(volume: Double) = UiThreadUtil.runOnUiThread { PlayerCore.setVolume(volume) }
-  override fun setMuted(muted: Boolean) = UiThreadUtil.runOnUiThread { PlayerCore.setMuted(muted) }
-  override fun setRepeat(repeat: Boolean) = UiThreadUtil.runOnUiThread { PlayerCore.setRepeat(repeat) }
-  override fun setResizeMode(mode: String) =
+  override fun play() {
+    UiThreadUtil.runOnUiThread { PlayerCore.play() }
+  }
+
+  override fun pause() {
+    UiThreadUtil.runOnUiThread { PlayerCore.pause() }
+  }
+
+  override fun stop() {
+    UiThreadUtil.runOnUiThread { PlayerCore.stop() }
+  }
+
+  override fun seekTo(position: Double) {
+    UiThreadUtil.runOnUiThread { PlayerCore.seekTo(position) }
+  }
+
+  override fun setRate(rate: Double) {
+    UiThreadUtil.runOnUiThread { PlayerCore.setRate(rate) }
+  }
+
+  override fun setVolume(volume: Double) {
+    UiThreadUtil.runOnUiThread { PlayerCore.setVolume(volume) }
+  }
+
+  override fun setMuted(muted: Boolean) {
+    UiThreadUtil.runOnUiThread { PlayerCore.setMuted(muted) }
+  }
+
+  override fun setRepeat(repeat: Boolean) {
+    UiThreadUtil.runOnUiThread { PlayerCore.setRepeat(repeat) }
+  }
+
+  override fun setResizeMode(mode: String) {
     UiThreadUtil.runOnUiThread { PlayerCore.setResizeMode(mode) }
+  }
 
   override fun getPosition(promise: Promise) {
     UiThreadUtil.runOnUiThread { promise.resolve(PlayerCore.positionSeconds()) }
@@ -93,10 +118,13 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
 
   // ------------------------------------------------------------- surfaces
 
-  override fun attach(surfaceId: String) =
+  override fun attach(surfaceId: String) {
     UiThreadUtil.runOnUiThread { PlayerCore.attach(surfaceId) }
+  }
 
-  override fun detach() = UiThreadUtil.runOnUiThread { PlayerCore.detach() }
+  override fun detach() {
+    UiThreadUtil.runOnUiThread { PlayerCore.detach() }
+  }
 
   // ----------------------------------------------------------- fullscreen
 

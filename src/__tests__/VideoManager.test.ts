@@ -1,0 +1,168 @@
+import NativeAuVideo from '../NativeAuVideo';
+import { FULLSCREEN_SURFACE_ID, VideoManager } from '../core/VideoManager';
+import type { VideoSource } from '../types/video';
+
+jest.mock('../NativeAuVideo', () => ({
+  __esModule: true,
+  default: {
+    nativeInit: jest.fn(),
+    setSource: jest.fn(),
+    preload: jest.fn(),
+    play: jest.fn(),
+    pause: jest.fn(),
+    stop: jest.fn(),
+    seekTo: jest.fn(),
+    setRate: jest.fn(),
+    setVolume: jest.fn(),
+    setMuted: jest.fn(),
+    setRepeat: jest.fn(),
+    setResizeMode: jest.fn(),
+    attach: jest.fn(),
+    detach: jest.fn(),
+    enterFullscreen: jest.fn(),
+    exitFullscreen: jest.fn(),
+    enterPip: jest.fn().mockResolvedValue(true),
+    exitPip: jest.fn(),
+    getPosition: jest.fn().mockResolvedValue(0),
+    releasePlayer: jest.fn(),
+    onStatusChange: jest.fn(() => ({ remove: jest.fn() })),
+    onLoad: jest.fn(() => ({ remove: jest.fn() })),
+    onProgress: jest.fn(() => ({ remove: jest.fn() })),
+    onSeek: jest.fn(() => ({ remove: jest.fn() })),
+    onEnd: jest.fn(() => ({ remove: jest.fn() })),
+    onError: jest.fn(() => ({ remove: jest.fn() })),
+    onAttach: jest.fn(() => ({ remove: jest.fn() })),
+    onDetach: jest.fn(() => ({ remove: jest.fn() })),
+    onPipChange: jest.fn(() => ({ remove: jest.fn() })),
+  },
+}));
+
+const native = NativeAuVideo as jest.Mocked<typeof NativeAuVideo>;
+
+const video = (id: string): VideoSource => ({
+  id,
+  uri: `https://example.com/${id}.mp4`,
+  title: id,
+});
+
+describe('VideoManager', () => {
+  const manager = VideoManager.shared;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager.destroy();
+    manager.init();
+  });
+
+  it('is a singleton', () => {
+    expect(VideoManager.shared).toBe(VideoManager.shared);
+  });
+
+  it('initializes the native player exactly once', () => {
+    manager.init();
+    manager.init();
+    expect(native.nativeInit).toHaveBeenCalledTimes(1);
+  });
+
+  describe('same-video handoff', () => {
+    it('loads a new source', () => {
+      manager.setSource(video('a'));
+      expect(native.setSource).toHaveBeenCalledTimes(1);
+      expect(manager.store.getState().currentVideo?.id).toBe('a');
+      expect(manager.store.getState().status).toBe('loading');
+    });
+
+    it('does NOT reload when the same video id is set again', () => {
+      manager.setSource(video('a'));
+      native.setSource.mockClear();
+
+      manager.setSource(video('a'), { surfaceId: 'detail' });
+
+      expect(native.setSource).not.toHaveBeenCalled();
+      expect(native.attach).toHaveBeenCalledWith('detail');
+    });
+
+    it('replaces the source when the video id changes', () => {
+      manager.setSource(video('a'));
+      manager.setSource(video('b'));
+      expect(native.setSource).toHaveBeenCalledTimes(2);
+      expect(manager.store.getState().currentVideo?.id).toBe('b');
+    });
+  });
+
+  describe('surfaces', () => {
+    it('attach updates the store and native side', () => {
+      manager.attach('feed');
+      expect(native.attach).toHaveBeenCalledWith('feed');
+      expect(manager.store.getState().surfaceId).toBe('feed');
+      expect(manager.store.getState().mode).toBe('inline');
+    });
+
+    it('surface unmount clears state only for the active surface', () => {
+      manager.attach('feed');
+      manager.handleSurfaceUnmount('other');
+      expect(manager.store.getState().surfaceId).toBe('feed');
+
+      manager.handleSurfaceUnmount('feed');
+      expect(manager.store.getState().surfaceId).toBeNull();
+    });
+  });
+
+  describe('fullscreen', () => {
+    it('unlocks natively and restores the previous surface on exit', () => {
+      manager.attach('feed');
+      manager.enterFullscreen();
+
+      expect(native.enterFullscreen).toHaveBeenCalledTimes(1);
+      expect(manager.store.getState().fullscreen).toBe(true);
+      expect(manager.store.getState().mode).toBe('fullscreen');
+
+      // Built-in host mounts and attaches its own surface.
+      manager.attach(FULLSCREEN_SURFACE_ID);
+
+      manager.exitFullscreen();
+      expect(native.exitFullscreen).toHaveBeenCalledTimes(1);
+      expect(manager.store.getState().fullscreen).toBe(false);
+      // Player returned to the surface it came from.
+      expect(native.attach).toHaveBeenLastCalledWith('feed');
+      expect(manager.store.getState().mode).toBe('inline');
+    });
+
+    it('enter/exit are idempotent', () => {
+      manager.enterFullscreen();
+      manager.enterFullscreen();
+      expect(native.enterFullscreen).toHaveBeenCalledTimes(1);
+
+      manager.exitFullscreen();
+      manager.exitFullscreen();
+      expect(native.exitFullscreen).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('floating', () => {
+    it('toggles floating mode and restores the inline surface', () => {
+      manager.attach('feed');
+      manager.showFloating();
+      expect(manager.store.getState().floating).toBe(true);
+      expect(manager.store.getState().mode).toBe('floating');
+
+      manager.hideFloating();
+      expect(manager.store.getState().floating).toBe(false);
+      expect(native.attach).toHaveBeenLastCalledWith('feed');
+    });
+  });
+
+  it('seek clamps into [0, duration]', () => {
+    manager.store.setState({ duration: 100 });
+    manager.seek(500);
+    expect(native.seekTo).toHaveBeenLastCalledWith(100);
+    manager.seek(-5);
+    expect(native.seekTo).toHaveBeenLastCalledWith(0);
+  });
+
+  it('volume clamps into [0, 1]', () => {
+    manager.setVolume(2);
+    expect(native.setVolume).toHaveBeenLastCalledWith(1);
+    expect(manager.store.getState().volume).toBe(1);
+  });
+});

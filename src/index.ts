@@ -1,4 +1,7 @@
-export { VideoProvider, type VideoProviderProps } from './provider/VideoProvider';
+export {
+  VideoProvider,
+  type VideoProviderProps,
+} from './provider/VideoProvider';
 export { useVideoManager } from './provider/VideoContext';
 export {
   VideoManager,
@@ -6,19 +9,34 @@ export {
   FLOATING_SURFACE_ID,
 } from './core/VideoManager';
 
-export { VideoSurface, type VideoSurfaceProps } from './components/VideoSurface';
+export {
+  VideoSurface,
+  type VideoSurfaceProps,
+} from './components/VideoSurface';
 export { VideoPlayer, type VideoPlayerProps } from './components/VideoPlayer';
 export { FullscreenPlayer } from './components/FullscreenPlayer';
-export { FloatingPlayer, type FloatingPlayerProps } from './components/FloatingPlayer';
+export {
+  FloatingPlayer,
+  type FloatingPlayerProps,
+} from './components/FloatingPlayer';
 export { MiniPlayer, type MiniPlayerProps } from './components/MiniPlayer';
-export { VideoControls, type VideoControlsProps } from './components/VideoControls';
-export { GestureOverlay, type GestureOverlayProps } from './components/GestureOverlay';
+export {
+  VideoControls,
+  type VideoControlsProps,
+} from './components/VideoControls';
+export {
+  GestureOverlay,
+  type GestureOverlayProps,
+} from './components/GestureOverlay';
 
 export { useVideo } from './hooks/useVideo';
 export { usePlayback } from './hooks/usePlayback';
 export { useFullscreen } from './hooks/useFullscreen';
 export { usePiP } from './hooks/usePiP';
-export { useVideoEvents, type VideoEventHandlers } from './hooks/useVideoEvents';
+export {
+  useVideoEvents,
+  type VideoEventHandlers,
+} from './hooks/useVideoEvents';
 
 export { formatTime } from './utils/formatTime';
 
