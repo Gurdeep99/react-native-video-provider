@@ -100,10 +100,4 @@ export interface VideoProviderConfig {
   floatingHost?: boolean;
   /** Pause playback when the active surface unmounts. Default false. */
   pauseOnDetach?: boolean;
-  /**
-   * Orientation to force while fullscreen is active, e.g. `'landscape'`.
-   * Restored to the previous lock (or `'auto'`) on exit.
-   * Default `'auto'` — fullscreen just unlocks the sensor.
-   */
-  fullscreenOrientation?: OrientationLock;
 }

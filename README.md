@@ -83,20 +83,31 @@ player.showFloating();    // draggable in-app window
 player.enterPiP();        // system picture-in-picture
 ```
 
-**5. Force an orientation** — per player, imperatively, or whenever
-fullscreen is active:
+**5. Force an orientation** — values: `'auto' | 'portrait' |
+'inverted-portrait' | 'landscape' | 'inverted-landscape'`.
+
+Scoped to fullscreen (applied when fullscreen opens, restored when it
+closes — the rest of the app is unaffected):
+
+```tsx
+// This player's fullscreen (incl. the built-in controls' button) locks to
+// portrait — e.g. a vertical video:
+<VideoPlayer source={video} fullscreenOrientation="portrait" />
+
+// Or per call:
+const { enter, toggle } = useFullscreen();
+enter('landscape');
+```
+
+Or as a standing lock, independent of fullscreen:
 
 ```tsx
 // While this player is mounted (released on unmount):
 <VideoPlayer source={video} orientation="landscape" />
 
-// Imperative — 'auto' | 'portrait' | 'inverted-portrait'
-//             | 'landscape' | 'inverted-landscape'
+// Imperative:
 player.setOrientation('inverted-landscape');
 player.setOrientation('auto'); // release
-
-// Always go landscape in the built-in fullscreen host:
-<VideoProvider config={{ fullscreenOrientation: 'landscape' }}>
 ```
 
 On iOS this needs the AppDelegate forwarding shown in

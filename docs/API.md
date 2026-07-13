@@ -17,20 +17,22 @@ built-in fullscreen + floating hosts above the app.
 | `fullscreenHost` | `true` | Render the built-in fullscreen Modal host |
 | `floatingHost` | `true` | Render the built-in draggable floating host |
 | `pauseOnDetach` | `false` | Pause when the active surface unmounts (default keeps audio running) |
-| `fullscreenOrientation` | `'auto'` | Orientation forced while fullscreen (e.g. `'landscape'`); `'auto'` just unlocks the sensor |
 
 ### `<VideoSurface surfaceId autoAttach? …ViewProps>`
 A dumb mount point. Registers its native view under `surfaceId`; the engine
 renders into at most one surface at a time. `autoAttach` attaches the player
 on mount. Unmounting never destroys the player.
 
-### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? orientation? …ViewProps>`
+### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? orientation? fullscreenOrientation? …ViewProps>`
 Convenience: `setSource` (handoff-aware) + `attach` + surface + built-in
 controls. Default `surfaceId` is `player:<source.id>`, so two VideoPlayers
 with the same source id naturally hand the engine to whichever mounted last.
 `orientation` forces the screen into that orientation while the player is
 mounted (`'landscape'`, `'inverted-landscape'`, `'portrait'`,
-`'inverted-portrait'`) and releases it on unmount.
+`'inverted-portrait'`) and releases it on unmount. `fullscreenOrientation`
+forces one only while this player is fullscreen (applied when fullscreen
+opens — including via the built-in controls' button — restored when it
+closes, so the rest of the app is unaffected).
 
 ### `<FullscreenPlayer />` / `<FloatingPlayer width? />`
 The built-in hosts (rendered by the provider — mount manually only if you
@@ -61,8 +63,9 @@ seek(sec) seekBy(offset) getPosition()
 setRate(r) setVolume(v) mute() unmute() setRepeat(b) setResizeMode(m)
 setOrientation(lock)   // 'auto' | 'portrait' | 'inverted-portrait'
                        // | 'landscape' | 'inverted-landscape'
+setFullscreenOrientation(lock | null)  // default for enterFullscreen()
 attach(surfaceId) detach()
-enterFullscreen() exitFullscreen() toggleFullscreen()
+enterFullscreen(orientation?) exitFullscreen() toggleFullscreen(orientation?)
 showFloating() hideFloating()
 enterPiP() exitPiP()
 addListener(event, fn) destroy()
@@ -83,6 +86,8 @@ orientationLock, fullscreen, pip, floating, mode, surfaceId, videoWidth,
 videoHeight, error`.
 
 ### `useFullscreen()` → `{ isFullscreen, enter, exit, toggle, orientationLock, setOrientation }`
+`enter(orientation?)` / `toggle(orientation?)` optionally force an
+orientation for that fullscreen session only.
 ### `usePiP()` → `{ isActive, enter, exit }`
 ### `useVideoEvents(handlers)`
 Subscribes for the component lifetime; inline handlers are fine.
@@ -140,7 +145,9 @@ type OrientationLock = 'auto' | 'portrait' | 'inverted-portrait'
   non-reserved surface and restores the previous orientation lock.
 - **Orientation precedence:** an explicit `setOrientation` lock (or a
   `<VideoPlayer orientation>` prop) wins over the fullscreen sensor unlock
-  and the app's own lock; `'auto'` restores whatever applied before. On iOS
-  this requires the AppDelegate forwarding described in the README; inverted
-  portrait is ignored by iPhones without a home button.
+  and the app's own lock; `'auto'` restores whatever applied before. A
+  fullscreen-scoped lock (`enterFullscreen('portrait')` or
+  `<VideoPlayer fullscreenOrientation>`) lasts only for that fullscreen
+  session. On iOS this requires the AppDelegate forwarding described in the
+  README; inverted portrait is ignored by iPhones without a home button.
 - **`destroy()`** is the only thing that releases the native player.

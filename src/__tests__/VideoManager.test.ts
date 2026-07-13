@@ -151,24 +151,41 @@ describe('VideoManager', () => {
       expect(manager.store.getState().orientationLock).toBe('auto');
     });
 
-    it('applies fullscreenOrientation on enter and restores the explicit lock on exit', () => {
-      manager.init({ fullscreenOrientation: 'landscape' });
-
-      manager.enterFullscreen();
-      expect(native.setOrientation).toHaveBeenLastCalledWith('landscape');
+    it('scopes enterFullscreen(orientation) to the fullscreen session', () => {
+      manager.enterFullscreen('portrait');
+      expect(native.setOrientation).toHaveBeenLastCalledWith('portrait');
 
       manager.exitFullscreen();
-      // No explicit lock was set, so exit releases the orientation.
+      // No explicit lock was set, so exit releases the orientation —
+      // the rest of the app is unaffected.
       expect(native.setOrientation).toHaveBeenLastCalledWith('auto');
+    });
 
+    it('restores an explicit lock when a fullscreen-scoped one ends', () => {
       manager.setOrientation('inverted-portrait');
-      manager.enterFullscreen();
+      manager.enterFullscreen('landscape');
       manager.exitFullscreen();
       expect(native.setOrientation).toHaveBeenLastCalledWith(
         'inverted-portrait'
       );
+    });
 
-      manager.init({ fullscreenOrientation: 'auto' });
+    it('uses the registered per-player default and ignores event args', () => {
+      manager.setFullscreenOrientation('portrait');
+      // Built-in controls call enterFullscreen with no argument; hook `enter`
+      // may be passed to onPress and receive a press event.
+      manager.enterFullscreen({ nativeEvent: {} } as never);
+      expect(native.setOrientation).toHaveBeenLastCalledWith('portrait');
+
+      manager.exitFullscreen();
+      expect(native.setOrientation).toHaveBeenLastCalledWith('auto');
+
+      manager.setFullscreenOrientation(null);
+      manager.enterFullscreen();
+      expect(native.setOrientation).toHaveBeenCalledTimes(3);
+      manager.exitFullscreen();
+      // No lock was applied, so exit doesn't touch orientation.
+      expect(native.setOrientation).toHaveBeenCalledTimes(3);
     });
   });
 

@@ -8,9 +8,15 @@ export function useFullscreen() {
   const isFullscreen = usePlayback((s) => s.fullscreen);
   const orientationLock = usePlayback((s) => s.orientationLock);
 
-  const enter = useCallback(() => manager.enterFullscreen(), [manager]);
+  const enter = useCallback(
+    (orientation?: OrientationLock) => manager.enterFullscreen(orientation),
+    [manager]
+  );
   const exit = useCallback(() => manager.exitFullscreen(), [manager]);
-  const toggle = useCallback(() => manager.toggleFullscreen(), [manager]);
+  const toggle = useCallback(
+    (orientation?: OrientationLock) => manager.toggleFullscreen(orientation),
+    [manager]
+  );
   const setOrientation = useCallback(
     (lock: OrientationLock) => manager.setOrientation(lock),
     [manager]

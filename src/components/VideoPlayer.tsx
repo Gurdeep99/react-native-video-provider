@@ -24,6 +24,13 @@ export interface VideoPlayerProps extends ViewProps {
    * `'inverted-portrait'`. Released (back to `'auto'`) on unmount.
    */
   orientation?: OrientationLock;
+  /**
+   * Orientation to force ONLY while this player is fullscreen (e.g.
+   * `'portrait'` for a vertical video). Applied when fullscreen opens —
+   * including via the built-in controls' fullscreen button — and restored
+   * when it closes, so the rest of the app is unaffected.
+   */
+  fullscreenOrientation?: OrientationLock;
 }
 
 /**
@@ -42,6 +49,7 @@ export function VideoPlayer({
   controls = true,
   resizeMode,
   orientation,
+  fullscreenOrientation,
   style,
   ...rest
 }: VideoPlayerProps) {
@@ -68,6 +76,14 @@ export function VideoPlayer({
     manager.setOrientation(orientation);
     return () => manager.setOrientation('auto');
   }, [manager, orientation]);
+
+  useEffect(() => {
+    if (!fullscreenOrientation) {
+      return;
+    }
+    manager.setFullscreenOrientation(fullscreenOrientation);
+    return () => manager.setFullscreenOrientation(null);
+  }, [manager, fullscreenOrientation]);
 
   return (
     <View style={[styles.container, style]} {...rest}>

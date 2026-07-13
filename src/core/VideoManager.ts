@@ -25,6 +25,14 @@ export const FLOATING_SURFACE_ID = '__au_floating__';
 
 const RESERVED_SURFACES = new Set([FULLSCREEN_SURFACE_ID, FLOATING_SURFACE_ID]);
 
+const ORIENTATION_LOCKS: readonly OrientationLock[] = [
+  'auto',
+  'portrait',
+  'inverted-portrait',
+  'landscape',
+  'inverted-landscape',
+];
+
 function toNativeSource(source: VideoSource): NativeVideoSource {
   return {
     id: source.id,
@@ -63,10 +71,14 @@ export class VideoManager {
     fullscreenHost: true,
     floatingHost: true,
     pauseOnDetach: false,
-    fullscreenOrientation: 'auto',
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
+
+  /** Per-player default for `enterFullscreen()` (VideoPlayer's prop). */
+  private fullscreenOrientationDefault: OrientationLock | null = null;
+  /** True while a fullscreen-scoped lock is applied, so exit restores it. */
+  private fullscreenLockApplied = false;
 
   private constructor() {}
 
@@ -306,6 +318,17 @@ export class VideoManager {
     NativeAuVideo.setOrientation(lock);
   }
 
+  /**
+   * Register the orientation `enterFullscreen()` uses when called without an
+   * argument (the built-in controls call it that way). Scoped: applied when
+   * fullscreen opens, restored when it closes — the rest of the app is
+   * unaffected. Pass null to unregister. Set by VideoPlayer's
+   * `fullscreenOrientation` prop.
+   */
+  setFullscreenOrientation(lock: OrientationLock | null): void {
+    this.fullscreenOrientationDefault = lock;
+  }
+
   async getPosition(): Promise<number> {
     return NativeAuVideo.getPosition();
   }
@@ -350,19 +373,26 @@ export class VideoManager {
   // ------------------------------------------------------------ modes
 
   /**
-   * Show the built-in fullscreen host and unlock device rotation.
-   * The host mounts a surface and attaches automatically.
+   * Show the built-in fullscreen host. Rotation unlocks by default; pass an
+   * orientation (or set VideoPlayer's `fullscreenOrientation` prop) to force
+   * one for the fullscreen session only — it is restored on exit, so the
+   * rest of the app never sees the lock.
    */
-  enterFullscreen(): void {
+  enterFullscreen(orientation?: OrientationLock): void {
     if (this.store.getState().fullscreen) {
       return;
     }
     this.set({ fullscreen: true, floating: false });
     this.setMode('fullscreen');
     NativeAuVideo.enterFullscreen();
-    const forced = this.config.fullscreenOrientation;
-    if (forced !== 'auto') {
-      NativeAuVideo.setOrientation(forced);
+    // `enter` is often passed straight to onPress, so the argument may be a
+    // press event — only honor real orientation values.
+    const requested = ORIENTATION_LOCKS.includes(orientation as OrientationLock)
+      ? (orientation as OrientationLock)
+      : this.fullscreenOrientationDefault;
+    if (requested && requested !== 'auto') {
+      this.fullscreenLockApplied = true;
+      NativeAuVideo.setOrientation(requested);
     }
     this.events.emit('onEnterFullscreen', undefined);
   }
@@ -372,7 +402,8 @@ export class VideoManager {
     if (!this.store.getState().fullscreen) {
       return;
     }
-    if (this.config.fullscreenOrientation !== 'auto') {
+    if (this.fullscreenLockApplied) {
+      this.fullscreenLockApplied = false;
       // Drop the fullscreen-only lock, restoring any explicit setOrientation.
       NativeAuVideo.setOrientation(this.store.getState().orientationLock);
     }
@@ -382,11 +413,11 @@ export class VideoManager {
     this.restoreInlineSurface();
   }
 
-  toggleFullscreen(): void {
+  toggleFullscreen(orientation?: OrientationLock): void {
     if (this.store.getState().fullscreen) {
       this.exitFullscreen();
     } else {
-      this.enterFullscreen();
+      this.enterFullscreen(orientation);
     }
   }
 
@@ -450,6 +481,8 @@ export class VideoManager {
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;
+    this.fullscreenOrientationDefault = null;
+    this.fullscreenLockApplied = false;
     NativeAuVideo.setOrientation('auto');
     NativeAuVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);
