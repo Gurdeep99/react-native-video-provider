@@ -1,28 +1,91 @@
-# Source files
+# ==========================================
+# Source (ignore if publishing compiled code only)
+# Remove these if your library ships TypeScript source
+# ==========================================
 src/
 example/
-android/
-ios/
+examples/
+demo/
 
+# ==========================================
+# Native example apps
+# ==========================================
+example/android/
+example/ios/
+
+# ==========================================
 # Tests
+# ==========================================
 __tests__/
 coverage/
+jest.config.*
+*.test.*
+*.spec.*
 
-# Config
-.github/
+# ==========================================
+# Build Cache
+# ==========================================
+.cache/
+.tmp/
+.temp/
+dist-test/
+
+# ==========================================
+# IDE
+# ==========================================
 .vscode/
+.idea/
 
-# Logs
-*.log
+# ==========================================
+# Git
+# ==========================================
+.git/
+.github/
+.gitlab/
+.gitlab-ci.yml
 
-# Docs
-README-draft.md
+# ==========================================
+# AI Files
+# ==========================================
+.claude/
+.cursor/
+.cursorignore
+.cursorrules
+AGENTS.md
+CLAUDE.md
+GEMINI.md
 
+# ==========================================
 # Environment
+# ==========================================
 .env
 .env.*
+*.pem
+*.key
 
-# Misc
+# ==========================================
+# Logs
+# ==========================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# OS Files
+# ==========================================
 .DS_Store
+Thumbs.db
 
-AI
+# ==========================================
+# Documentation (optional)
+# ==========================================
+README-draft.md
+TODO.md
+NOTES.md
+
+# ==========================================
+# Misc
+# ==========================================
+*.tgz

@@ -28,7 +28,7 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  override fun release() {
+  override fun releasePlayer() {
     UiThreadUtil.runOnUiThread {
       PlayerCore.release()
       PlayerCore.listener = null

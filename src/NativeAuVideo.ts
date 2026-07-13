@@ -90,7 +90,7 @@ export interface Spec extends TurboModule {
   getPosition(): Promise<number>;
 
   /** Tear down the native player entirely. */
-  release(): void;
+  releasePlayer(): void;
 
   readonly onStatusChange: CodegenTypes.EventEmitter<NativeStatusEvent>;
   readonly onLoad: CodegenTypes.EventEmitter<NativeLoadEvent>;

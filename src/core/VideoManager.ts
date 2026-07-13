@@ -424,7 +424,7 @@ export class VideoManager {
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;
-    NativeAuVideo.release();
+    NativeAuVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);
   }
 

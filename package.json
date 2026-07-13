@@ -110,6 +110,14 @@
     "jsSrcsDir": "src",
     "android": {
       "javaPackageName": "com.auvideo"
+    },
+    "ios": {
+      "modulesProvider": {
+        "AuVideo": "AuVideo"
+      },
+      "componentProvider": {
+        "AuVideoSurfaceView": "AuVideoSurfaceView"
+      }
     }
   },
   "prettier": {
