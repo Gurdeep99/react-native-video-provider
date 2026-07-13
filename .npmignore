@@ -1,0 +1,28 @@
+# Source files
+src/
+example/
+android/
+ios/
+
+# Tests
+__tests__/
+coverage/
+
+# Config
+.github/
+.vscode/
+
+# Logs
+*.log
+
+# Docs
+README-draft.md
+
+# Environment
+.env
+.env.*
+
+# Misc
+.DS_Store
+
+AI

@@ -2,12 +2,12 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-au-video": ["./src/index"]
+      "react-native-video-provider": ["./src/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
     "customConditions": [
-      "react-native-au-video-source",
+      "react-native-video-provider-source",
       "react-native-strict-api"
     ],
     "esModuleInterop": true,

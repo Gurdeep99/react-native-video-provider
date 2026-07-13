@@ -5,7 +5,7 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
-import java.util.HashMap
+import com.facebook.react.uimanager.ViewManager
 
 class AuVideoPackage : BaseReactPackage() {
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
@@ -15,6 +15,10 @@ class AuVideoPackage : BaseReactPackage() {
       null
     }
   }
+
+  override fun createViewManagers(
+    reactContext: ReactApplicationContext
+  ): List<ViewManager<*, *>> = listOf(AuVideoSurfaceViewManager())
 
   override fun getReactModuleInfoProvider() = ReactModuleInfoProvider {
     mapOf(

@@ -2,7 +2,8 @@ buildscript {
   ext.AuVideo = [
     kotlinVersion: "2.0.21",
     minSdkVersion: 24,
-    compileSdkVersion: 36
+    compileSdkVersion: 36,
+    media3Version: "1.8.0"
   ]
 
   ext.getExtOrDefault = { prop ->
@@ -48,4 +49,11 @@ android {
 
 dependencies {
   implementation "com.facebook.react:react-android"
+
+  def media3Version = getExtOrDefault("media3Version")
+  implementation "androidx.media3:media3-exoplayer:${media3Version}"
+  implementation "androidx.media3:media3-exoplayer-hls:${media3Version}"
+  implementation "androidx.media3:media3-exoplayer-dash:${media3Version}"
+  implementation "androidx.media3:media3-ui:${media3Version}"
+  implementation "androidx.core:core-ktx:1.13.1"
 }

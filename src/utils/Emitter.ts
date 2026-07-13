@@ -37,7 +37,7 @@ export class Emitter<Events extends object> {
       try {
         (listener as Listener<Events[K]>)(payload);
       } catch (e) {
-        console.error(`[react-native-au-video] listener for ${String(event)} threw`, e);
+        console.error(`[react-native-video-provider] listener for ${String(event)} threw`, e);
       }
     }
   }

@@ -13,7 +13,7 @@ import {
   usePlayback,
   useVideo,
   type VideoSource,
-} from 'react-native-au-video';
+} from 'react-native-video-provider';
 
 const VIDEOS: VideoSource[] = [
   {
