@@ -1,14 +1,16 @@
-import {
-  TurboModuleRegistry,
-  type TurboModule,
-  type CodegenTypes,
-} from 'react-native';
+import { TurboModuleRegistry, type TurboModule } from 'react-native';
+// Direct imports (not the `CodegenTypes.` namespace) so the spec parses on
+// RN 0.79's codegen as well as 0.80+.
+import type {
+  EventEmitter,
+  UnsafeObject,
+} from 'react-native/Libraries/Types/CodegenTypes';
 
 export type NativeVideoSource = {
   id: string;
   uri: string;
   /** HTTP headers, string -> string */
-  headers?: CodegenTypes.UnsafeObject;
+  headers?: UnsafeObject;
   title?: string;
   artist?: string;
   artworkUri?: string;
@@ -84,6 +86,13 @@ export interface Spec extends TurboModule {
   /** Restore the previous orientation lock. */
   exitFullscreen(): void;
 
+  /**
+   * Force a screen orientation, overriding the app's own lock and the
+   * fullscreen sensor unlock until cleared with 'auto'.
+   * auto | portrait | inverted-portrait | landscape | inverted-landscape
+   */
+  setOrientation(orientation: string): void;
+
   enterPip(): Promise<boolean>;
   exitPip(): void;
 
@@ -92,15 +101,15 @@ export interface Spec extends TurboModule {
   /** Tear down the native player entirely. */
   releasePlayer(): void;
 
-  readonly onStatusChange: CodegenTypes.EventEmitter<NativeStatusEvent>;
-  readonly onLoad: CodegenTypes.EventEmitter<NativeLoadEvent>;
-  readonly onProgress: CodegenTypes.EventEmitter<NativeProgressEvent>;
-  readonly onSeek: CodegenTypes.EventEmitter<NativeSeekEvent>;
-  readonly onEnd: CodegenTypes.EventEmitter<void>;
-  readonly onError: CodegenTypes.EventEmitter<NativeErrorEvent>;
-  readonly onAttach: CodegenTypes.EventEmitter<NativeSurfaceEvent>;
-  readonly onDetach: CodegenTypes.EventEmitter<NativeSurfaceEvent>;
-  readonly onPipChange: CodegenTypes.EventEmitter<NativePipEvent>;
+  readonly onStatusChange: EventEmitter<NativeStatusEvent>;
+  readonly onLoad: EventEmitter<NativeLoadEvent>;
+  readonly onProgress: EventEmitter<NativeProgressEvent>;
+  readonly onSeek: EventEmitter<NativeSeekEvent>;
+  readonly onEnd: EventEmitter<void>;
+  readonly onError: EventEmitter<NativeErrorEvent>;
+  readonly onAttach: EventEmitter<NativeSurfaceEvent>;
+  readonly onDetach: EventEmitter<NativeSurfaceEvent>;
+  readonly onPipChange: EventEmitter<NativePipEvent>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('AuVideo');

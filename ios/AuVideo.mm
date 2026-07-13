@@ -159,6 +159,11 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
   dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation setFullscreen:NO]; });
 }
 
+- (void)setOrientation:(NSString *)orientation
+{
+  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation setOrientation:orientation]; });
+}
+
 #pragma mark - PiP
 
 - (void)enterPip:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject

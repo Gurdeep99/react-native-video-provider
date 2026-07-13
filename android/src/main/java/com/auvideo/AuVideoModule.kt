@@ -1,5 +1,6 @@
 package com.auvideo
 
+import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -17,7 +18,13 @@ import com.facebook.react.bridge.UiThreadUtil
 class AuVideoModule(reactContext: ReactApplicationContext) :
   NativeAuVideoSpec(reactContext), PlayerCore.Listener {
 
+  /** The app's own requestedOrientation, saved before we first override it. */
   private var previousOrientation: Int? = null
+
+  /** Explicit lock from setOrientation; wins over the fullscreen unlock. */
+  private var lockedOrientation: Int? = null
+
+  private var fullscreenActive = false
 
   // ------------------------------------------------------------ lifecycle
 
@@ -126,6 +133,41 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
     UiThreadUtil.runOnUiThread { PlayerCore.detach() }
   }
 
+  // ---------------------------------------------------------- orientation
+
+  override fun setOrientation(orientation: String) {
+    UiThreadUtil.runOnUiThread {
+      val activity = currentActivity ?: return@runOnUiThread
+      if (previousOrientation == null) {
+        previousOrientation = activity.requestedOrientation
+      }
+      lockedOrientation = when (orientation) {
+        "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        "inverted-portrait" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+        "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        "inverted-landscape" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+        else -> null // "auto"
+      }
+      applyOrientation(activity)
+    }
+  }
+
+  /**
+   * Precedence: explicit lock > fullscreen sensor unlock > the app's own
+   * orientation. Once nothing overrides anymore, the saved value is dropped.
+   */
+  private fun applyOrientation(activity: Activity) {
+    val lock = lockedOrientation
+    activity.requestedOrientation = when {
+      lock != null -> lock
+      fullscreenActive -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+      else -> previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    if (lock == null && !fullscreenActive) {
+      previousOrientation = null
+    }
+  }
+
   // ----------------------------------------------------------- fullscreen
 
   override fun enterFullscreen() {
@@ -134,8 +176,10 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
       if (previousOrientation == null) {
         previousOrientation = activity.requestedOrientation
       }
-      // Unlock rotation while fullscreen is visible, even in portrait-locked apps.
-      activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+      // Unlock rotation while fullscreen is visible, even in portrait-locked
+      // apps — unless an explicit orientation lock is active.
+      fullscreenActive = true
+      applyOrientation(activity)
 
       val window = activity.window
       WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -150,9 +194,8 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
   override fun exitFullscreen() {
     UiThreadUtil.runOnUiThread {
       val activity = currentActivity ?: return@runOnUiThread
-      activity.requestedOrientation =
-        previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-      previousOrientation = null
+      fullscreenActive = false
+      applyOrientation(activity)
 
       val window = activity.window
       WindowCompat.setDecorFitsSystemWindows(window, true)

@@ -1,11 +1,11 @@
 import Foundation
 import UIKit
 
-/// Fullscreen orientation coordination.
+/// Fullscreen + forced-orientation coordination.
 ///
 /// iOS decides allowed orientations by asking the AppDelegate. For rotation
-/// to unlock only while the player is fullscreen, the host app forwards that
-/// question here (see README):
+/// to unlock only while the player is fullscreen (and for `setOrientation`
+/// locks to apply), the host app forwards that question here (see README):
 ///
 /// ```swift
 /// func application(_ application: UIApplication,
@@ -22,38 +22,89 @@ public final class AuVideoOrientation: NSObject {
   /// Orientations allowed while fullscreen. Default: everything but upside-down.
   @objc public static var fullscreenMask: UIInterfaceOrientationMask = .allButUpsideDown
 
+  /// Explicit lock from `setOrientation`. Empty = no lock. Wins over both
+  /// the app default and the fullscreen unlock.
+  @objc public private(set) static var lockMask: UIInterfaceOrientationMask = []
+
   /// Call from AppDelegate's supportedInterfaceOrientationsFor.
   @objc(maskWithDefault:)
   public static func mask(
     withDefault defaultMask: UIInterfaceOrientationMask
   ) -> UIInterfaceOrientationMask {
+    if !lockMask.isEmpty {
+      return lockMask
+    }
     return isFullscreenActive ? fullscreenMask : defaultMask
   }
 
   @objc public static func setFullscreen(_ active: Bool) {
     guard isFullscreenActive != active else { return }
     isFullscreenActive = active
-    refresh()
+    applyCurrent()
   }
 
-  /// Makes the system re-query supported orientations; when exiting
-  /// fullscreen in a portrait-locked app this also rotates back.
-  private static func refresh() {
+  /// Force a screen orientation until cleared with "auto".
+  /// Values: auto | portrait | inverted-portrait | landscape | inverted-landscape
+  /// (upside-down portrait is ignored on iPhones without a home button).
+  @objc(setOrientation:)
+  public static func setOrientation(_ orientation: String) {
+    // "landscape" = device top pointing left (interface landscapeRight),
+    // matching Android's SCREEN_ORIENTATION_LANDSCAPE; "inverted-" is the
+    // 180° rotation of each.
+    switch orientation {
+    case "portrait":
+      lockMask = .portrait
+    case "inverted-portrait":
+      lockMask = .portraitUpsideDown
+    case "landscape":
+      lockMask = .landscapeRight
+    case "inverted-landscape":
+      lockMask = .landscapeLeft
+    default:
+      lockMask = []
+    }
+    applyCurrent()
+  }
+
+  /// Re-query supported orientations and rotate to whatever now applies:
+  /// the lock if set, free rotation while fullscreen, else back to portrait
+  /// (portrait-locked apps are the common host).
+  private static func applyCurrent() {
+    if !lockMask.isEmpty {
+      refresh(rotatingTo: lockMask)
+    } else {
+      refresh(rotatingTo: isFullscreenActive ? nil : .portrait)
+    }
+  }
+
+  private static func refresh(rotatingTo mask: UIInterfaceOrientationMask?) {
     DispatchQueue.main.async {
       if #available(iOS 16.0, *) {
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
           scene.keyWindow?.rootViewController?
             .setNeedsUpdateOfSupportedInterfaceOrientations()
-          if !isFullscreenActive {
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait), errorHandler: { _ in })
+          if let mask {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask), errorHandler: { _ in })
           }
         }
       } else {
-        if !isFullscreenActive {
-          UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        if let device = legacyDeviceOrientation(for: mask) {
+          UIDevice.current.setValue(device.rawValue, forKey: "orientation")
         }
         UIViewController.attemptRotationToDeviceOrientation()
       }
     }
+  }
+
+  private static func legacyDeviceOrientation(
+    for mask: UIInterfaceOrientationMask?
+  ) -> UIDeviceOrientation? {
+    guard let mask else { return nil }
+    if mask.contains(.portrait) { return .portrait }
+    if mask.contains(.portraitUpsideDown) { return .portraitUpsideDown }
+    // Interface landscapeRight is device landscapeLeft, and vice versa.
+    if mask.contains(.landscapeRight) { return .landscapeLeft }
+    if mask.contains(.landscapeLeft) { return .landscapeRight }
+    return nil
   }
 }

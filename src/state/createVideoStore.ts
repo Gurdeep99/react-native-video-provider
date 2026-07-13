@@ -16,6 +16,7 @@ export const initialVideoState: VideoState = {
   muted: false,
   repeat: false,
   resizeMode: 'contain',
+  orientationLock: 'auto',
   fullscreen: false,
   pip: false,
   floating: false,

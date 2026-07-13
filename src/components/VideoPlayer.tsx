@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { StyleSheet, View, type ViewProps } from 'react-native';
 import { useVideoManager } from '../provider/VideoContext';
-import type { ResizeMode, VideoSource } from '../types/video';
+import type { OrientationLock, ResizeMode, VideoSource } from '../types/video';
 import { VideoControls } from './VideoControls';
 import { VideoSurface } from './VideoSurface';
 
@@ -18,6 +18,12 @@ export interface VideoPlayerProps extends ViewProps {
   /** Show built-in controls. Default true. */
   controls?: boolean;
   resizeMode?: ResizeMode;
+  /**
+   * Force the screen into this orientation while the player is mounted:
+   * `'landscape'`, `'inverted-landscape'`, `'portrait'` or
+   * `'inverted-portrait'`. Released (back to `'auto'`) on unmount.
+   */
+  orientation?: OrientationLock;
 }
 
 /**
@@ -35,6 +41,7 @@ export function VideoPlayer({
   surfaceId,
   controls = true,
   resizeMode,
+  orientation,
   style,
   ...rest
 }: VideoPlayerProps) {
@@ -53,6 +60,14 @@ export function VideoPlayer({
       manager.setResizeMode(resizeMode);
     }
   }, [manager, resizeMode]);
+
+  useEffect(() => {
+    if (!orientation || orientation === 'auto') {
+      return;
+    }
+    manager.setOrientation(orientation);
+    return () => manager.setOrientation('auto');
+  }, [manager, orientation]);
 
   return (
     <View style={[styles.container, style]} {...rest}>

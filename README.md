@@ -83,6 +83,26 @@ player.showFloating();    // draggable in-app window
 player.enterPiP();        // system picture-in-picture
 ```
 
+**5. Force an orientation** — per player, imperatively, or whenever
+fullscreen is active:
+
+```tsx
+// While this player is mounted (released on unmount):
+<VideoPlayer source={video} orientation="landscape" />
+
+// Imperative — 'auto' | 'portrait' | 'inverted-portrait'
+//             | 'landscape' | 'inverted-landscape'
+player.setOrientation('inverted-landscape');
+player.setOrientation('auto'); // release
+
+// Always go landscape in the built-in fullscreen host:
+<VideoProvider config={{ fullscreenOrientation: 'landscape' }}>
+```
+
+On iOS this needs the AppDelegate forwarding shown in
+[Platform setup](#ios--fullscreen-rotation). Inverted portrait is ignored by
+iPhones without a home button (the OS doesn't allow it).
+
 ## Surfaces (the core idea)
 
 `<VideoSurface>` never creates a player — it registers a mount point. The
@@ -120,8 +140,9 @@ useVideoEvents({
 ### iOS — fullscreen rotation
 
 iOS asks the AppDelegate which orientations are allowed. Forward that to the
-library so rotation unlocks only while fullscreen is visible (skip this if
-your app already supports all orientations):
+library so rotation unlocks while fullscreen is visible and `setOrientation`
+/ the `orientation` prop can force a rotation (skip this only if you don't
+use those features and your app already supports all orientations):
 
 ```swift
 // AppDelegate.swift

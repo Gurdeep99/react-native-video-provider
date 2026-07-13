@@ -16,6 +16,22 @@ export interface VideoSource {
 
 export type ResizeMode = 'contain' | 'cover' | 'stretch';
 
+/**
+ * Forced screen orientation.
+ *
+ * - `auto` — no lock; the app's own orientation settings apply.
+ * - `landscape` / `inverted-landscape` — the two landscape rotations
+ *   (inverted = rotated 180°).
+ * - `portrait` / `inverted-portrait` — upright and upside-down portrait.
+ *   Note: iPhones without a home button ignore upside-down portrait.
+ */
+export type OrientationLock =
+  | 'auto'
+  | 'portrait'
+  | 'inverted-portrait'
+  | 'landscape'
+  | 'inverted-landscape';
+
 export type PlayerMode =
   'inline' | 'fullscreen' | 'floating' | 'pip' | 'background' | 'hidden';
 
@@ -52,6 +68,8 @@ export interface VideoState {
   muted: boolean;
   repeat: boolean;
   resizeMode: ResizeMode;
+  /** Orientation forced via `setOrientation` (not the fullscreen unlock). */
+  orientationLock: OrientationLock;
   fullscreen: boolean;
   pip: boolean;
   floating: boolean;
@@ -82,4 +100,10 @@ export interface VideoProviderConfig {
   floatingHost?: boolean;
   /** Pause playback when the active surface unmounts. Default false. */
   pauseOnDetach?: boolean;
+  /**
+   * Orientation to force while fullscreen is active, e.g. `'landscape'`.
+   * Restored to the previous lock (or `'auto'`) on exit.
+   * Default `'auto'` — fullscreen just unlocks the sensor.
+   */
+  fullscreenOrientation?: OrientationLock;
 }

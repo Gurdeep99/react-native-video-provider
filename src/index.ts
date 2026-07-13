@@ -43,6 +43,7 @@ export { formatTime } from './utils/formatTime';
 export type {
   VideoSource,
   ResizeMode,
+  OrientationLock,
   PlayerMode,
   PlaybackStatus,
   VideoError,

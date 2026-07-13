@@ -7,6 +7,7 @@ import {
 } from '../state/createVideoStore';
 import type { VideoEventMap, VideoEventName } from '../types/events';
 import type {
+  OrientationLock,
   PlaybackStatus,
   PlayerMode,
   ResizeMode,
@@ -62,6 +63,7 @@ export class VideoManager {
     fullscreenHost: true,
     floatingHost: true,
     pauseOnDetach: false,
+    fullscreenOrientation: 'auto',
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
@@ -295,6 +297,15 @@ export class VideoManager {
     NativeAuVideo.setResizeMode(mode);
   }
 
+  /**
+   * Force a screen orientation (`'landscape'`, `'inverted-portrait'`, …),
+   * overriding the app's own lock until cleared with `'auto'`.
+   */
+  setOrientation(lock: OrientationLock): void {
+    this.set({ orientationLock: lock });
+    NativeAuVideo.setOrientation(lock);
+  }
+
   async getPosition(): Promise<number> {
     return NativeAuVideo.getPosition();
   }
@@ -349,6 +360,10 @@ export class VideoManager {
     this.set({ fullscreen: true, floating: false });
     this.setMode('fullscreen');
     NativeAuVideo.enterFullscreen();
+    const forced = this.config.fullscreenOrientation;
+    if (forced !== 'auto') {
+      NativeAuVideo.setOrientation(forced);
+    }
     this.events.emit('onEnterFullscreen', undefined);
   }
 
@@ -356,6 +371,10 @@ export class VideoManager {
   exitFullscreen(): void {
     if (!this.store.getState().fullscreen) {
       return;
+    }
+    if (this.config.fullscreenOrientation !== 'auto') {
+      // Drop the fullscreen-only lock, restoring any explicit setOrientation.
+      NativeAuVideo.setOrientation(this.store.getState().orientationLock);
     }
     NativeAuVideo.exitFullscreen();
     this.set({ fullscreen: false });
@@ -431,6 +450,7 @@ export class VideoManager {
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;
+    NativeAuVideo.setOrientation('auto');
     NativeAuVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);
   }

@@ -17,6 +17,7 @@ jest.mock('../NativeAuVideo', () => ({
     setMuted: jest.fn(),
     setRepeat: jest.fn(),
     setResizeMode: jest.fn(),
+    setOrientation: jest.fn(),
     attach: jest.fn(),
     detach: jest.fn(),
     enterFullscreen: jest.fn(),
@@ -136,6 +137,38 @@ describe('VideoManager', () => {
       manager.exitFullscreen();
       manager.exitFullscreen();
       expect(native.exitFullscreen).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('orientation', () => {
+    it('forwards locks to native and tracks them in state', () => {
+      manager.setOrientation('landscape');
+      expect(native.setOrientation).toHaveBeenLastCalledWith('landscape');
+      expect(manager.store.getState().orientationLock).toBe('landscape');
+
+      manager.setOrientation('auto');
+      expect(native.setOrientation).toHaveBeenLastCalledWith('auto');
+      expect(manager.store.getState().orientationLock).toBe('auto');
+    });
+
+    it('applies fullscreenOrientation on enter and restores the explicit lock on exit', () => {
+      manager.init({ fullscreenOrientation: 'landscape' });
+
+      manager.enterFullscreen();
+      expect(native.setOrientation).toHaveBeenLastCalledWith('landscape');
+
+      manager.exitFullscreen();
+      // No explicit lock was set, so exit releases the orientation.
+      expect(native.setOrientation).toHaveBeenLastCalledWith('auto');
+
+      manager.setOrientation('inverted-portrait');
+      manager.enterFullscreen();
+      manager.exitFullscreen();
+      expect(native.setOrientation).toHaveBeenLastCalledWith(
+        'inverted-portrait'
+      );
+
+      manager.init({ fullscreenOrientation: 'auto' });
     });
   });
 

@@ -1,6 +1,7 @@
 export type {
   VideoSource,
   ResizeMode,
+  OrientationLock,
   PlayerMode,
   PlaybackStatus,
   VideoError,
