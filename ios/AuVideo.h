@@ -5,6 +5,6 @@
  * (AuVideoPlayerCore); this class marshals calls onto the main thread and
  * forwards engine events to JS via the codegen emitters.
  */
-@interface AuVideo : NSObject <NativeAuVideoSpec>
+@interface AuVideo : NativeAuVideoSpecBase <NativeAuVideoSpec>
 
 @end

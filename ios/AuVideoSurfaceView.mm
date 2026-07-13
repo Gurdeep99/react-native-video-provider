@@ -6,6 +6,8 @@
 
 #import <React/RCTConversions.h>
 
+#import <AVKit/AVKit.h>
+
 #if __has_include(<AuVideo/AuVideo-Swift.h>)
 #import <AuVideo/AuVideo-Swift.h>
 #else
