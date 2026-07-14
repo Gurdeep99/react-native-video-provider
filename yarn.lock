@@ -7884,6 +7884,7 @@ __metadata:
     react-native: "npm:0.85.0"
     react-native-builder-bob: "npm:^0.43.0"
     react-native-monorepo-config: "npm:^0.4.0"
+    react-native-svg: "npm:15.15.5"
   languageName: unknown
   linkType: soft
 
@@ -7915,6 +7916,7 @@ __metadata:
   peerDependencies:
     react: "*"
     react-native: "*"
+    react-native-svg: ">=13.0.0"
   languageName: unknown
   linkType: soft
 
