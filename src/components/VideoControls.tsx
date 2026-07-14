@@ -37,12 +37,18 @@ export function VideoControls({
   onClose,
 }: VideoControlsProps) {
   const manager = useVideoManager();
+  const status = usePlayback((s) => s.status);
   const playing = usePlayback((s) => s.playing);
   const buffering = usePlayback((s) => s.buffering);
+  const loading = usePlayback((s) => s.loading);
   const position = usePlayback((s) => s.position);
   const duration = usePlayback((s) => s.duration);
   const muted = usePlayback((s) => s.muted);
   const fullscreen = usePlayback((s) => s.fullscreen);
+
+  // No known duration once loaded — a live stream or a video with no fixed
+  // end. There's nothing to seek, so hide the seek bar entirely.
+  const live = status !== 'idle' && !loading && duration <= 0;
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,6 +91,34 @@ export function VideoControls({
 
   const progress = duration > 0 ? Math.min(position / duration, 1) : 0;
 
+  const muteButton = (
+    <Pressable
+      style={styles.button}
+      onPress={() => (muted ? manager.unmute() : manager.mute())}
+      hitSlop={8}
+    >
+      {muted ? (
+        <SvgIcons icon="muteUnmute" size={18} fill="#fff" />
+      ) : (
+        <SvgIcons icon="muteUnmute" type="mute" size={18} fill="#fff" />
+      )}
+    </Pressable>
+  );
+
+  const fullscreenButton = showFullscreenButton ? (
+    <Pressable
+      style={styles.button}
+      onPress={() => manager.toggleFullscreen()}
+      hitSlop={8}
+    >
+      {fullscreen ? (
+        <SvgIcons icon="fullScreen" size={18} fill="#fff" />
+      ) : (
+        <SvgIcons icon="fullScreen" type="full" size={18} fill="#fff" />
+      )}
+    </Pressable>
+  ) : null;
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <GestureOverlay
@@ -102,22 +136,7 @@ export function VideoControls({
             ) : (
               <View />
             )}
-            <Pressable
-              style={styles.button}
-              onPress={() => (muted ? manager.unmute() : manager.mute())}
-              hitSlop={8}
-            >
-              {muted ? (
-                <SvgIcons icon="muteUnmute" type="mute" size={18} fill="#fff" />
-              ) : (
-                <SvgIcons
-                  icon="muteUnmute"
-                  type="unmute"
-                  size={18}
-                  fill="#fff"
-                />
-              )}
-            </Pressable>
+            {!live ? muteButton : <View />}
           </View>
 
           <Pressable
@@ -138,36 +157,29 @@ export function VideoControls({
           </Pressable>
 
           <View style={styles.bottomRow}>
-            <Text style={styles.time}>{formatTime(position)}</Text>
-            <Pressable
-              style={styles.track}
-              onLayout={onTrackLayout}
-              onPress={onTrackPress}
-            >
-              <View style={styles.trackBg} />
-              <View
-                style={[styles.trackFill, { width: `${progress * 100}%` }]}
-              />
-            </Pressable>
-            <Text style={styles.time}>{formatTime(duration)}</Text>
-            {showFullscreenButton ? (
-              <Pressable
-                style={styles.button}
-                onPress={() => manager.toggleFullscreen()}
-                hitSlop={8}
-              >
-                {fullscreen ? (
-                  <SvgIcons icon="fullScreen" size={18} fill="#fff" />
-                ) : (
-                  <SvgIcons
-                    icon="fullScreen"
-                    type="full"
-                    size={18}
-                    fill="#fff"
+            {live ? (
+              <>
+                {muteButton}
+                <View style={styles.spacer} />
+                {fullscreenButton}
+              </>
+            ) : (
+              <>
+                <Text style={styles.time}>{formatTime(position)}</Text>
+                <Pressable
+                  style={styles.track}
+                  onLayout={onTrackLayout}
+                  onPress={onTrackPress}
+                >
+                  <View style={styles.trackBg} />
+                  <View
+                    style={[styles.trackFill, { width: `${progress * 100}%` }]}
                   />
-                )}
-              </Pressable>
-            ) : null}
+                </Pressable>
+                <Text style={styles.time}>{formatTime(duration)}</Text>
+                {fullscreenButton}
+              </>
+            )}
           </View>
         </View>
       ) : null}
@@ -213,6 +225,9 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 24,
     justifyContent: 'center',
+  },
+  spacer: {
+    flex: 1,
   },
   trackBg: {
     position: 'absolute',

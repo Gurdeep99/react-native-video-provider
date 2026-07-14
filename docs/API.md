@@ -48,6 +48,10 @@ Minimal chrome: play/pause, seek bar, times, mute, fullscreen toggle,
 tap-to-show, double-tap seek. Build your own from the hooks if you need
 custom design.
 
+For a live stream or any source with no known duration (`duration <= 0`
+once loaded), the seek bar and times are hidden automatically — only mute
+(moved to the bottom-left) and fullscreen remain.
+
 ### `<GestureOverlay onSingleTap? onDoubleTapLeft? onDoubleTapRight? onLongPress?>`
 Tap-gesture layer used by VideoControls, exported as a building block.
 
