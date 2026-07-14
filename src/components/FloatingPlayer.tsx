@@ -4,12 +4,12 @@ import {
   PanResponder,
   Pressable,
   StyleSheet,
-  Text,
   useWindowDimensions,
 } from 'react-native';
 import { FLOATING_SURFACE_ID } from '../core/VideoManager';
 import { usePlayback } from '../hooks/usePlayback';
 import { useVideoManager } from '../provider/VideoContext';
+import { CloseIcon, EnterFullscreenIcon } from './icons';
 import { VideoSurface } from './VideoSurface';
 
 export interface FloatingPlayerProps {
@@ -74,7 +74,7 @@ export function FloatingPlayer({ width = 200 }: FloatingPlayerProps) {
         hitSlop={8}
         onPress={() => manager.hideFloating()}
       >
-        <Text style={styles.icon}>✕</Text>
+        <CloseIcon size={12} color="#fff" />
       </Pressable>
       <Pressable
         style={[styles.button, styles.expandButton]}
@@ -84,7 +84,7 @@ export function FloatingPlayer({ width = 200 }: FloatingPlayerProps) {
           manager.enterFullscreen();
         }}
       >
-        <Text style={styles.icon}>⤢</Text>
+        <EnterFullscreenIcon size={12} color="#fff" />
       </Pressable>
     </Animated.View>
   );
@@ -122,9 +122,5 @@ const styles = StyleSheet.create({
   },
   expandButton: {
     left: 4,
-  },
-  icon: {
-    color: '#fff',
-    fontSize: 12,
   },
 });

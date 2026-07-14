@@ -77,8 +77,6 @@ export class VideoManager {
 
   /** Per-player default for `enterFullscreen()` (VideoPlayer's prop). */
   private fullscreenOrientationDefault: OrientationLock | null = null;
-  /** True while a fullscreen-scoped lock is applied, so exit restores it. */
-  private fullscreenLockApplied = false;
 
   private constructor() {}
 
@@ -375,8 +373,11 @@ export class VideoManager {
   /**
    * Show the built-in fullscreen host. Rotation unlocks by default; pass an
    * orientation (or set VideoPlayer's `fullscreenOrientation` prop) to force
-   * one for the fullscreen session only — it is restored on exit, so the
-   * rest of the app never sees the lock.
+   * one for the fullscreen session only. That scoped orientation is the
+   * highest priority — it's applied in the SAME native call as entering
+   * fullscreen (never as a separate follow-up call), so there is no
+   * unlocked frame where the sensor could win before the lock takes effect.
+   * Restored on exit; the rest of the app never sees the lock.
    */
   enterFullscreen(orientation?: OrientationLock): void {
     if (this.store.getState().fullscreen) {
@@ -384,30 +385,31 @@ export class VideoManager {
     }
     this.set({ fullscreen: true, floating: false });
     this.setMode('fullscreen');
-    NativeAuVideo.enterFullscreen();
     // `enter` is often passed straight to onPress, so the argument may be a
     // press event — only honor real orientation values.
     const requested = ORIENTATION_LOCKS.includes(orientation as OrientationLock)
       ? (orientation as OrientationLock)
       : this.fullscreenOrientationDefault;
-    if (requested && requested !== 'auto') {
-      this.fullscreenLockApplied = true;
-      NativeAuVideo.setOrientation(requested);
-    }
+    // A scoped override wins outright; otherwise carry any standing
+    // setOrientation() lock through fullscreen unchanged (still higher
+    // priority than the sensor unlock — 'auto' just means neither applies).
+    const lock =
+      requested && requested !== 'auto'
+        ? requested
+        : this.store.getState().orientationLock;
+    NativeAuVideo.enterFullscreen(lock);
     this.events.emit('onEnterFullscreen', undefined);
   }
 
-  /** Restore the previous orientation lock and re-attach the previous surface. */
+  /** Restore the standing orientation lock (if any) and re-attach the previous surface. */
   exitFullscreen(): void {
     if (!this.store.getState().fullscreen) {
       return;
     }
-    if (this.fullscreenLockApplied) {
-      this.fullscreenLockApplied = false;
-      // Drop the fullscreen-only lock, restoring any explicit setOrientation.
-      NativeAuVideo.setOrientation(this.store.getState().orientationLock);
-    }
-    NativeAuVideo.exitFullscreen();
+    // Always restore the standing lock (or 'auto' if none) — a
+    // fullscreen-scoped override was never written to state, so this
+    // naturally drops it without needing to track whether one was applied.
+    NativeAuVideo.exitFullscreen(this.store.getState().orientationLock);
     this.set({ fullscreen: false });
     this.events.emit('onExitFullscreen', undefined);
     this.restoreInlineSurface();
@@ -482,7 +484,6 @@ export class VideoManager {
     this.initialized = false;
     this.lastInlineSurfaceId = null;
     this.fullscreenOrientationDefault = null;
-    this.fullscreenLockApplied = false;
     NativeAuVideo.setOrientation('auto');
     NativeAuVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);

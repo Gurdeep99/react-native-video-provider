@@ -22,8 +22,8 @@ public final class AuVideoOrientation: NSObject {
   /// Orientations allowed while fullscreen. Default: everything but upside-down.
   @objc public static var fullscreenMask: UIInterfaceOrientationMask = .allButUpsideDown
 
-  /// Explicit lock from `setOrientation`. Empty = no lock. Wins over both
-  /// the app default and the fullscreen unlock.
+  /// Explicit lock. Empty = no lock. Wins over both the app default and the
+  /// fullscreen unlock.
   @objc public private(set) static var lockMask: UIInterfaceOrientationMask = []
 
   /// Call from AppDelegate's supportedInterfaceOrientationsFor.
@@ -37,33 +37,50 @@ public final class AuVideoOrientation: NSObject {
     return isFullscreenActive ? fullscreenMask : defaultMask
   }
 
-  @objc public static func setFullscreen(_ active: Bool) {
-    guard isFullscreenActive != active else { return }
-    isFullscreenActive = active
+  /// Enter fullscreen and apply `orientation` in the same call — never as a
+  /// separate follow-up — so there is no unlocked frame where the sensor
+  /// could win before the lock takes effect.
+  /// Values: auto | portrait | inverted-portrait | landscape | inverted-landscape
+  @objc(enterFullscreen:)
+  public static func enterFullscreen(_ orientation: String) {
+    isFullscreenActive = true
+    lockMask = maskFor(orientation)
     applyCurrent()
   }
 
-  /// Force a screen orientation until cleared with "auto".
-  /// Values: auto | portrait | inverted-portrait | landscape | inverted-landscape
-  /// (upside-down portrait is ignored on iPhones without a home button).
+  /// Exit fullscreen, restoring `orientation` atomically (same value semantics).
+  @objc(exitFullscreen:)
+  public static func exitFullscreen(_ orientation: String) {
+    isFullscreenActive = false
+    lockMask = maskFor(orientation)
+    applyCurrent()
+  }
+
+  /// Force a screen orientation until cleared with "auto", independent of
+  /// fullscreen. (Upside-down portrait is ignored on iPhones without a home
+  /// button.)
   @objc(setOrientation:)
   public static func setOrientation(_ orientation: String) {
+    lockMask = maskFor(orientation)
+    applyCurrent()
+  }
+
+  private static func maskFor(_ orientation: String) -> UIInterfaceOrientationMask {
     // "landscape" = device top pointing left (interface landscapeRight),
     // matching Android's SCREEN_ORIENTATION_LANDSCAPE; "inverted-" is the
     // 180° rotation of each.
     switch orientation {
     case "portrait":
-      lockMask = .portrait
+      return .portrait
     case "inverted-portrait":
-      lockMask = .portraitUpsideDown
+      return .portraitUpsideDown
     case "landscape":
-      lockMask = .landscapeRight
+      return .landscapeRight
     case "inverted-landscape":
-      lockMask = .landscapeLeft
+      return .landscapeLeft
     default:
-      lockMask = []
+      return []
     }
-    applyCurrent()
   }
 
   /// Re-query supported orientations and rotate to whatever now applies:

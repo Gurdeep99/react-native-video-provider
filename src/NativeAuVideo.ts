@@ -81,10 +81,14 @@ export interface Spec extends TurboModule {
   attach(surfaceId: string): void;
   detach(): void;
 
-  /** Unlock rotation + immersive mode. Does not move the player. */
-  enterFullscreen(): void;
-  /** Restore the previous orientation lock. */
-  exitFullscreen(): void;
+  /**
+   * Enter fullscreen (immersive mode). `orientation` is applied in the same
+   * native call — no intermediate unlocked frame before a lock takes effect.
+   * auto | portrait | inverted-portrait | landscape | inverted-landscape
+   */
+  enterFullscreen(orientation: string): void;
+  /** Exit fullscreen, restoring `orientation` (same value semantics) atomically. */
+  exitFullscreen(orientation: string): void;
 
   /**
    * Force a screen orientation, overriding the app's own lock and the

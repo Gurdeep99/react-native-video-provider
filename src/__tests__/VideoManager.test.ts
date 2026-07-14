@@ -50,8 +50,8 @@ describe('VideoManager', () => {
   const manager = VideoManager.shared;
 
   beforeEach(() => {
-    jest.clearAllMocks();
     manager.destroy();
+    jest.clearAllMocks();
     manager.init();
   });
 
@@ -114,7 +114,7 @@ describe('VideoManager', () => {
       manager.attach('feed');
       manager.enterFullscreen();
 
-      expect(native.enterFullscreen).toHaveBeenCalledTimes(1);
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('auto');
       expect(manager.store.getState().fullscreen).toBe(true);
       expect(manager.store.getState().mode).toBe('fullscreen');
 
@@ -122,7 +122,7 @@ describe('VideoManager', () => {
       manager.attach(FULLSCREEN_SURFACE_ID);
 
       manager.exitFullscreen();
-      expect(native.exitFullscreen).toHaveBeenCalledTimes(1);
+      expect(native.exitFullscreen).toHaveBeenLastCalledWith('auto');
       expect(manager.store.getState().fullscreen).toBe(false);
       // Player returned to the surface it came from.
       expect(native.attach).toHaveBeenLastCalledWith('feed');
@@ -151,23 +151,37 @@ describe('VideoManager', () => {
       expect(manager.store.getState().orientationLock).toBe('auto');
     });
 
-    it('scopes enterFullscreen(orientation) to the fullscreen session', () => {
+    it('applies a scoped orientation atomically with enterFullscreen (no separate call)', () => {
       manager.enterFullscreen('portrait');
-      expect(native.setOrientation).toHaveBeenLastCalledWith('portrait');
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('portrait');
+      expect(native.setOrientation).not.toHaveBeenCalled();
 
       manager.exitFullscreen();
-      // No explicit lock was set, so exit releases the orientation —
-      // the rest of the app is unaffected.
-      expect(native.setOrientation).toHaveBeenLastCalledWith('auto');
+      // No standing lock was set, so exit restores 'auto' — the rest of the
+      // app is unaffected.
+      expect(native.exitFullscreen).toHaveBeenLastCalledWith('auto');
     });
 
-    it('restores an explicit lock when a fullscreen-scoped one ends', () => {
+    it('a scoped orientation always wins over any other state (highest priority)', () => {
       manager.setOrientation('inverted-portrait');
       manager.enterFullscreen('landscape');
+      // The explicit fullscreen argument beats the standing lock outright.
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('landscape');
+
       manager.exitFullscreen();
-      expect(native.setOrientation).toHaveBeenLastCalledWith(
+      // The standing lock (set before fullscreen) is restored afterward.
+      expect(native.exitFullscreen).toHaveBeenLastCalledWith(
         'inverted-portrait'
       );
+    });
+
+    it('carries a standing lock through an unscoped fullscreen unchanged', () => {
+      manager.setOrientation('portrait');
+      manager.enterFullscreen(); // no scoped override
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('portrait');
+
+      manager.exitFullscreen();
+      expect(native.exitFullscreen).toHaveBeenLastCalledWith('portrait');
     });
 
     it('uses the registered per-player default and ignores event args', () => {
@@ -175,17 +189,14 @@ describe('VideoManager', () => {
       // Built-in controls call enterFullscreen with no argument; hook `enter`
       // may be passed to onPress and receive a press event.
       manager.enterFullscreen({ nativeEvent: {} } as never);
-      expect(native.setOrientation).toHaveBeenLastCalledWith('portrait');
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('portrait');
 
       manager.exitFullscreen();
-      expect(native.setOrientation).toHaveBeenLastCalledWith('auto');
+      expect(native.exitFullscreen).toHaveBeenLastCalledWith('auto');
 
       manager.setFullscreenOrientation(null);
       manager.enterFullscreen();
-      expect(native.setOrientation).toHaveBeenCalledTimes(3);
-      manager.exitFullscreen();
-      // No lock was applied, so exit doesn't touch orientation.
-      expect(native.setOrientation).toHaveBeenCalledTimes(3);
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('auto');
     });
   });
 

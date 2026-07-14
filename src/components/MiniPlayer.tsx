@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { usePlayback } from '../hooks/usePlayback';
 import { useVideoManager } from '../provider/VideoContext';
+import { CloseIcon, PauseIcon, PlayIcon } from './icons';
 import { VideoSurface } from './VideoSurface';
 
 export interface MiniPlayerProps extends ViewProps {
@@ -47,11 +48,15 @@ export function MiniPlayer({
         hitSlop={8}
         onPress={() => manager.toggle()}
       >
-        <Text style={styles.icon}>{playing ? '❙❙' : '▶'}</Text>
+        {playing ? (
+          <PauseIcon size={16} color="#fff" />
+        ) : (
+          <PlayIcon size={16} color="#fff" />
+        )}
       </Pressable>
       {onClose ? (
         <Pressable style={styles.button} hitSlop={8} onPress={onClose}>
-          <Text style={styles.icon}>✕</Text>
+          <CloseIcon size={16} color="#fff" />
         </Pressable>
       ) : null}
     </View>
@@ -85,9 +90,5 @@ const styles = StyleSheet.create({
   button: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-  },
-  icon: {
-    color: '#fff',
-    fontSize: 16,
   },
 });

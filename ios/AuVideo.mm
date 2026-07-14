@@ -149,14 +149,14 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
 
 #pragma mark - Fullscreen
 
-- (void)enterFullscreen
+- (void)enterFullscreen:(NSString *)orientation
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation setFullscreen:YES]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation enterFullscreen:orientation]; });
 }
 
-- (void)exitFullscreen
+- (void)exitFullscreen:(NSString *)orientation
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation setFullscreen:NO]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation exitFullscreen:orientation]; });
 }
 
 - (void)setOrientation:(NSString *)orientation

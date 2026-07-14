@@ -143,11 +143,14 @@ type OrientationLock = 'auto' | 'portrait' | 'inverted-portrait'
   automatically. Set `pauseOnDetach: true` to pause instead.
 - **Fullscreen restore:** exiting fullscreen/floating re-attaches the last
   non-reserved surface and restores the previous orientation lock.
-- **Orientation precedence:** an explicit `setOrientation` lock (or a
+- **Orientation precedence:** a fullscreen-scoped lock
+  (`enterFullscreen('portrait')` or `<VideoPlayer fullscreenOrientation>`) is
+  the highest priority — it's applied in the same native call as entering
+  fullscreen (never a separate follow-up call), so there's no unlocked frame
+  where the sensor could win first. It lasts only for that fullscreen
+  session. Below that: an explicit `setOrientation` lock (or a
   `<VideoPlayer orientation>` prop) wins over the fullscreen sensor unlock
-  and the app's own lock; `'auto'` restores whatever applied before. A
-  fullscreen-scoped lock (`enterFullscreen('portrait')` or
-  `<VideoPlayer fullscreenOrientation>`) lasts only for that fullscreen
-  session. On iOS this requires the AppDelegate forwarding described in the
-  README; inverted portrait is ignored by iPhones without a home button.
+  and the app's own lock; `'auto'` restores whatever applied before. On iOS
+  this requires the AppDelegate forwarding described in the README; inverted
+  portrait is ignored by iPhones without a home button.
 - **`destroy()`** is the only thing that releases the native player.

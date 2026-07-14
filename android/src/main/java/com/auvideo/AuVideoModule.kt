@@ -135,19 +135,21 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
 
   // ---------------------------------------------------------- orientation
 
+  private fun parseOrientation(orientation: String): Int? = when (orientation) {
+    "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    "inverted-portrait" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+    "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+    "inverted-landscape" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+    else -> null // "auto"
+  }
+
   override fun setOrientation(orientation: String) {
     UiThreadUtil.runOnUiThread {
       val activity = currentActivity ?: return@runOnUiThread
       if (previousOrientation == null) {
         previousOrientation = activity.requestedOrientation
       }
-      lockedOrientation = when (orientation) {
-        "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        "inverted-portrait" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-        "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        "inverted-landscape" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-        else -> null // "auto"
-      }
+      lockedOrientation = parseOrientation(orientation)
       applyOrientation(activity)
     }
   }
@@ -170,15 +172,17 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
 
   // ----------------------------------------------------------- fullscreen
 
-  override fun enterFullscreen() {
+  override fun enterFullscreen(orientation: String) {
     UiThreadUtil.runOnUiThread {
       val activity = currentActivity ?: return@runOnUiThread
       if (previousOrientation == null) {
         previousOrientation = activity.requestedOrientation
       }
       // Unlock rotation while fullscreen is visible, even in portrait-locked
-      // apps — unless an explicit orientation lock is active.
+      // apps — unless `orientation` locks it, applied in this same call so
+      // there's no unlocked frame before the lock takes effect.
       fullscreenActive = true
+      lockedOrientation = parseOrientation(orientation)
       applyOrientation(activity)
 
       val window = activity.window
@@ -191,10 +195,11 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  override fun exitFullscreen() {
+  override fun exitFullscreen(orientation: String) {
     UiThreadUtil.runOnUiThread {
       val activity = currentActivity ?: return@runOnUiThread
       fullscreenActive = false
+      lockedOrientation = parseOrientation(orientation)
       applyOrientation(activity)
 
       val window = activity.window

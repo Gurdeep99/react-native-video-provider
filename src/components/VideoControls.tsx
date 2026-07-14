@@ -11,6 +11,8 @@ import { useVideoManager } from '../provider/VideoContext';
 import { usePlayback } from '../hooks/usePlayback';
 import { formatTime } from '../utils/formatTime';
 import { GestureOverlay } from './GestureOverlay';
+import { CloseIcon } from './icons';
+import SvgIcons from './SvgIcons';
 
 export interface VideoControlsProps {
   /** Seconds jumped by double-tap. Default 10. */
@@ -95,7 +97,7 @@ export function VideoControls({
           <View style={styles.topRow}>
             {onClose ? (
               <Pressable style={styles.button} onPress={onClose} hitSlop={8}>
-                <Text style={styles.icon}>✕</Text>
+                <CloseIcon size={18} color="#fff" />
               </Pressable>
             ) : (
               <View />
@@ -105,7 +107,16 @@ export function VideoControls({
               onPress={() => (muted ? manager.unmute() : manager.mute())}
               hitSlop={8}
             >
-              <Text style={styles.icon}>{muted ? '🔇' : '🔊'}</Text>
+              {muted ? (
+                <SvgIcons icon="muteUnmute" type="mute" size={18} fill="#fff" />
+              ) : (
+                <SvgIcons
+                  icon="muteUnmute"
+                  type="unmute"
+                  size={18}
+                  fill="#fff"
+                />
+              )}
             </Pressable>
           </View>
 
@@ -117,9 +128,13 @@ export function VideoControls({
             }}
             hitSlop={16}
           >
-            <Text style={styles.playIcon}>
-              {buffering ? '…' : playing ? '❙❙' : '▶'}
-            </Text>
+            {buffering ? (
+              <Text style={styles.playIcon}>…</Text>
+            ) : playing ? (
+              <SvgIcons icon="playPause" type="pause" size={34} fill="#fff" />
+            ) : (
+              <SvgIcons icon="playPause" type="play" size={34} fill="#fff" />
+            )}
           </Pressable>
 
           <View style={styles.bottomRow}>
@@ -141,7 +156,16 @@ export function VideoControls({
                 onPress={() => manager.toggleFullscreen()}
                 hitSlop={8}
               >
-                <Text style={styles.icon}>{fullscreen ? '⤡' : '⤢'}</Text>
+                {fullscreen ? (
+                  <SvgIcons icon="fullScreen" size={18} fill="#fff" />
+                ) : (
+                  <SvgIcons
+                    icon="fullScreen"
+                    type="full"
+                    size={18}
+                    fill="#fff"
+                  />
+                )}
               </Pressable>
             ) : null}
           </View>
@@ -205,9 +229,5 @@ const styles = StyleSheet.create({
   },
   button: {
     padding: 4,
-  },
-  icon: {
-    color: '#fff',
-    fontSize: 18,
   },
 });
