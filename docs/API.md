@@ -23,16 +23,56 @@ A dumb mount point. Registers its native view under `surfaceId`; the engine
 renders into at most one surface at a time. `autoAttach` attaches the player
 on mount. Unmounting never destroys the player.
 
-### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? orientation? fullscreenOrientation? …ViewProps>`
+### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? pauseOnFocusLost? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
 Convenience: `setSource` (handoff-aware) + `attach` + surface + built-in
 controls. Default `surfaceId` is `player:<source.id>`, so two VideoPlayers
 with the same source id naturally hand the engine to whichever mounted last.
-`orientation` forces the screen into that orientation while the player is
-mounted (`'landscape'`, `'inverted-landscape'`, `'portrait'`,
-`'inverted-portrait'`) and releases it on unmount. `fullscreenOrientation`
-forces one only while this player is fullscreen (applied when fullscreen
-opens — including via the built-in controls' button — restored when it
-closes, so the rest of the app is unaffected).
+
+- `repeat` — loop playback when it ends. Default `false`.
+- `muted` — default `false`.
+- `orientation` forces the screen into that orientation while the player is
+  mounted (`'landscape'`, `'inverted-landscape'`, `'portrait'`,
+  `'inverted-portrait'`) and releases it on unmount.
+- `fullscreenOrientation` forces one only while this player is fullscreen
+  (applied when fullscreen opens — including via the built-in controls'
+  button — restored when it closes, so the rest of the app is unaffected).
+- `pauseOnFocusLost` — pause when the app backgrounds while this player is
+  the one playing. Default `true`; set `false` for background audio. Only the
+  focused player reacts, so a video attached to another surface is untouched.
+- `onLoadComplete({ videoId, duration, width, height })` — fires once
+  metadata is available.
+- `onBuffering(buffering: boolean)` — fires whenever buffering starts/stops.
+- `onError({ code, message })`.
+- `ref` exposes the underlying `VideoManager` — `ref.current.play()`,
+  `.seek()`, etc. The same singleton `useVideo()` returns.
+
+### `<VideoFeed data itemHeight? resizeMode? muted? repeat? visibilityThreshold? renderOverlay? onFocusChange? pauseOnUnmount? …FlatListProps>`
+A single-engine, TikTok/Reels-style feed. Renders many videos in a scrolling
+FlatList but only the one scrolled into focus plays — the rest are stopped.
+There is still exactly ONE native player; scrolling hands it off to the
+focused item's surface, so memory/CPU stay flat no matter how long the feed.
+
+Each item is a plain `VideoSurface` (never a `VideoPlayer` — that would fight
+for the engine on mount); focus is driven from FlatList viewability.
+
+```tsx
+<VideoFeed
+  data={videos} // [{ id, uri, title? }, …] — each needs a stable id
+  renderOverlay={({ item, focused }) => (
+    <Caption title={item.title} paused={!focused} />
+  )}
+/>
+```
+
+- `itemHeight` — default full window height (paging feed). `data` items each
+  need a stable `id`; it's the FlatList key and the surface id.
+- `muted` default `true`, `repeat` default `true`, `visibilityThreshold`
+  (percent visible to become focused) default `80`.
+- `renderOverlay({ item, index, focused })` — captions, like button, a
+  tap-to-pause layer built on `useVideo()`, etc.
+- `onFocusChange(item | null, index)` fires when the playing item changes.
+- Any extra `FlatList` prop passes through (`ListHeaderComponent`, `onEndReached`
+  for infinite scroll, `horizontal`, …).
 
 ### `<FullscreenPlayer />` / `<FloatingPlayer width? />`
 The built-in hosts (rendered by the provider — mount manually only if you

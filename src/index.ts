@@ -14,6 +14,12 @@ export {
   type VideoSurfaceProps,
 } from './components/VideoSurface';
 export { VideoPlayer, type VideoPlayerProps } from './components/VideoPlayer';
+export {
+  VideoFeed,
+  feedSurfaceId,
+  type VideoFeedProps,
+  type VideoFeedRenderInfo,
+} from './components/VideoFeed';
 export { FullscreenPlayer } from './components/FullscreenPlayer';
 export {
   FloatingPlayer,

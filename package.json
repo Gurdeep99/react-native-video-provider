@@ -1,6 +1,6 @@
 {
   "name": "react-native-video-provider",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Singleton-engine video library for React Native (one native player, many surfaces)",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -18,6 +18,7 @@
     "android",
     "ios",
     "cpp",
+    "scripts/postinstall.js",
     "*.podspec",
     "react-native.config.js",
     "!ios/build",
@@ -35,6 +36,7 @@
     "example": "yarn workspace react-native-video-provider-example",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
     "prepare": "bob build",
+    "postinstall": "node scripts/postinstall.js",
     "typecheck": "tsc",
     "test": "jest",
     "lint": "eslint \"**/*.{js,ts,tsx}\""
@@ -46,14 +48,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/grdp99/react-native-au-video.git"
+    "url": "git+https://github.com/gurdeep99/react-native-au-video.git"
   },
   "author": "Gurdeep Singh <grdp99@gmail.com> (https://gurdeep.net)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/grdp99/react-native-au-video/issues"
+    "url": "https://github.com/gurdeep99/react-native-au-video/issues"
   },
-  "homepage": "https://github.com/grdp99/react-native-au-video#readme",
+  "homepage": "https://github.com/gurdeep99/react-native-au-video#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
