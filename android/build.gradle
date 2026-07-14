@@ -57,3 +57,28 @@ dependencies {
   implementation "androidx.media3:media3-ui:${media3Version}"
   implementation "androidx.core:core-ktx:1.13.1"
 }
+
+// Print the package banner while the app compiles. Best-effort and fully
+// guarded — a missing node binary or any failure never breaks the build.
+tasks.register("auVideoBanner") {
+  doLast {
+    try {
+      def script = new File(projectDir, "../scripts/postinstall.js")
+      if (script.exists()) {
+        def banner = providers.exec {
+          commandLine "node", script.absolutePath, "--force"
+        }.standardOutput.asText.get()
+        logger.lifecycle(banner.trim())
+      }
+    } catch (Exception e) {
+      // Never fail the build over a banner (e.g. node not on PATH).
+      logger.info("auVideoBanner skipped: ${e.message}")
+    }
+  }
+}
+
+afterEvaluate {
+  tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("auVideoBanner")
+  }
+}

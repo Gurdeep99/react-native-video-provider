@@ -18,8 +18,14 @@ Feed ──▶ Detail ──▶ Fullscreen (rotation unlocked) ──▶ Floatin
   navigation, tab switches, unmounts, Fast Refresh
 - 🔁 **Same-video handoff** — `setSource` with the same `id` is a no-op for
   the engine; the player just re-parents to the new surface
+- 📱 **Single-engine feed** — `VideoFeed`, a TikTok/Reels-style list where
+  only the scrolled-into-focus video plays, on one player, flat memory
 - 📺 **Fullscreen** — built-in host that unlocks rotation while visible and
   restores the previous orientation lock on exit
+- 🧭 **Orientation control** — force portrait/landscape (+ inverted) per
+  player, scoped to fullscreen, or as a standing lock
+- ⏸️ **Focus-aware** — auto-pause on app background and on screen navigation
+  (React Navigation's `useIsFocused()`)
 - 🎈 **Floating player** — built-in draggable in-app window
 - 🖼 **Picture in Picture** — Android + iOS
 - ⚡ **New Architecture native** — TurboModule + Fabric, typed end to end
@@ -31,11 +37,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and
 ## Installation
 
 ```sh
-npm install react-native-video-provider
+npm install react-native-video-provider react-native-svg
 cd ios && pod install
 ```
 
-Requires React Native 0.80+ with the New Architecture enabled.
+`react-native-svg` is a peer dependency (used by the built-in control icons).
+
+Requires the New Architecture. Works on React Native **0.79+** — the
+TurboModule spec uses direct codegen-type imports so it parses on 0.79's
+codegen as well as 0.80+.
 
 ## Quick start
 
@@ -131,7 +141,66 @@ player.attach('feed');     // render here
 ```
 
 `<VideoPlayer>` is the convenience wrapper that does `setSource` + `attach` +
-optional controls in one component.
+optional controls in one component. Handy props:
+
+```tsx
+<VideoPlayer
+  source={video}
+  autoplay muted repeat          // playback flags
+  resizeMode="contain"           // contain | cover | stretch
+  controls                       // built-in chrome (SVG icons)
+  onLoadComplete={(m) => {}}     // duration/dimensions ready
+  onBuffering={(b) => {}}
+  onError={(e) => {}}
+  ref={playerRef}                // → the VideoManager (playerRef.current.seek(…))
+/>
+```
+
+For a live stream (no known duration), the built-in controls automatically
+hide the seek bar and show just mute + fullscreen.
+
+## Video feed (single engine, only the focused one plays)
+
+`<VideoFeed>` is a TikTok/Reels-style vertical feed. It renders many videos in
+a FlatList but plays **only the one scrolled into focus** — on the same single
+engine, so memory and CPU stay flat no matter how long the feed. Each item is
+just a surface; scrolling hands the one player off to the focused item.
+
+```tsx
+import { VideoFeed } from 'react-native-video-provider';
+
+<VideoFeed
+  data={videos} // [{ id, uri, title? }, …] — each needs a stable id
+  renderOverlay={({ item, focused }) => (
+    <Caption title={item.title} paused={!focused} />
+  )}
+/>
+```
+
+Any extra `FlatList` prop passes through (`onEndReached` for infinite scroll,
+`ListHeaderComponent`, …).
+
+## Pausing on focus loss
+
+Both `<VideoPlayer>` and `<VideoFeed>` pause automatically when the **app is
+backgrounded** (opt out with `pauseOnFocusLost={false}` for background audio).
+
+For **screen navigation** (navigating to another screen while the app stays
+foregrounded), pass your navigation library's focus flag — React Navigation
+keeps screens mounted, so there is no other reliable signal:
+
+```tsx
+import { useIsFocused } from '@react-navigation/native';
+
+function Screen() {
+  const isFocused = useIsFocused();
+  return <VideoPlayer source={video} isFocused={isFocused} />;
+  // VideoFeed takes the same prop.
+}
+```
+
+`false` pauses; returning to `true` resumes (reclaiming the engine if another
+video took it while you were away).
 
 ## State & events
 

@@ -39,6 +39,18 @@ with the same source id naturally hand the engine to whichever mounted last.
 - `pauseOnFocusLost` — pause when the app backgrounds while this player is
   the one playing. Default `true`; set `false` for background audio. Only the
   focused player reacts, so a video attached to another surface is untouched.
+- `isFocused` — screen-focus flag from your navigation library. Pass
+  React Navigation's `useIsFocused()`; `false` pauses, back to `true` resumes.
+  This is the **only** reliable way to pause when navigating to another screen
+  (React Navigation keeps screens mounted and the app stays foregrounded, so
+  neither unmount nor AppState fires):
+
+  ```tsx
+  import { useIsFocused } from '@react-navigation/native';
+  const isFocused = useIsFocused();
+  <VideoPlayer source={video} isFocused={isFocused} />
+  // VideoFeed takes the same prop.
+  ```
 - `onLoadComplete({ videoId, duration, width, height })` — fires once
   metadata is available.
 - `onBuffering(buffering: boolean)` — fires whenever buffering starts/stops.
@@ -46,7 +58,7 @@ with the same source id naturally hand the engine to whichever mounted last.
 - `ref` exposes the underlying `VideoManager` — `ref.current.play()`,
   `.seek()`, etc. The same singleton `useVideo()` returns.
 
-### `<VideoFeed data itemHeight? resizeMode? muted? repeat? visibilityThreshold? renderOverlay? onFocusChange? pauseOnUnmount? …FlatListProps>`
+### `<VideoFeed data itemHeight? resizeMode? muted? repeat? visibilityThreshold? renderOverlay? onFocusChange? pauseOnUnmount? isFocused? …FlatListProps>`
 A single-engine, TikTok/Reels-style feed. Renders many videos in a scrolling
 FlatList but only the one scrolled into focus plays — the rest are stopped.
 There is still exactly ONE native player; scrolling hands it off to the

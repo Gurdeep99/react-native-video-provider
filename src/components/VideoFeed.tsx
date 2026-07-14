@@ -59,6 +59,13 @@ export interface VideoFeedProps<T extends VideoSource> extends Omit<
   onFocusChange?: (item: T | null, index: number) => void;
   /** Pause playback when the feed unmounts. Default `true`. */
   pauseOnUnmount?: boolean;
+  /**
+   * Screen-focus flag from your navigation library — e.g. React Navigation's
+   * `useIsFocused()`. `false` pauses the feed; returning to `true` resumes the
+   * item that was in view. Needed because navigating away keeps the feed
+   * mounted and the app foregrounded. Leave undefined if you don't navigate.
+   */
+  isFocused?: boolean;
 }
 
 /**
@@ -88,6 +95,7 @@ export function VideoFeed<T extends VideoSource>({
   renderOverlay,
   onFocusChange,
   pauseOnUnmount = true,
+  isFocused,
   ...rest
 }: VideoFeedProps<T>) {
   const manager = useVideoManager();
@@ -121,6 +129,28 @@ export function VideoFeed<T extends VideoSource>({
       }
     };
   }, [manager, pauseOnUnmount]);
+
+  useEffect(() => {
+    if (isFocused === undefined) {
+      return;
+    }
+    if (!isFocused) {
+      if (
+        manager.store.getState().surfaceId === feedSurfaceId(focusedId ?? '')
+      ) {
+        manager.pause();
+      }
+      return;
+    }
+    // Screen regained focus — resume the item that was in view.
+    const item = data.find((d) => d.id === focusedId);
+    if (item) {
+      manager.setSource(item, {
+        autoplay: true,
+        surfaceId: feedSurfaceId(item.id),
+      });
+    }
+  }, [manager, isFocused, focusedId, data]);
 
   const focus = useCallback(
     (item: T | null, index: number) => {

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { AppState, StyleSheet, View, type ViewProps } from 'react-native';
 import { VideoManager } from '../core/VideoManager';
 import { useVideoManager } from '../provider/VideoContext';
@@ -50,6 +50,20 @@ export interface VideoPlayerProps extends ViewProps {
    * Only the focused player acts, so a video attached elsewhere is untouched.
    */
   pauseOnFocusLost?: boolean;
+  /**
+   * Screen-focus flag from your navigation library — e.g. React Navigation's
+   * `useIsFocused()`. `false` pauses this player; returning to `true` reclaims
+   * the engine and resumes this video. This is the only reliable way to pause
+   * on screen navigation (React Navigation keeps screens mounted and the app
+   * stays foregrounded, so unmount/AppState never fire). Leave undefined if
+   * you don't use navigation.
+   *
+   * ```tsx
+   * const isFocused = useIsFocused(); // @react-navigation/native
+   * <VideoPlayer source={video} isFocused={isFocused} />
+   * ```
+   */
+  isFocused?: boolean;
   /** Fires once metadata (duration, dimensions) is available. */
   onLoadComplete?: (info: VideoEventMap['onLoad']) => void;
   /** Fires whenever buffering starts or stops. */
@@ -83,6 +97,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       orientation,
       fullscreenOrientation,
       pauseOnFocusLost = true,
+      isFocused,
       onLoadComplete,
       onBuffering,
       onError,
@@ -94,10 +109,20 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     const manager = useVideoManager();
     const id = surfaceId ?? `player:${source.id}`;
 
+    // Read the latest source without retriggering effects on every render
+    // (source is usually a fresh object literal each render).
+    const sourceRef = useRef(source);
+    sourceRef.current = source;
+
     useImperativeHandle(ref, () => manager, [manager]);
 
     useEffect(() => {
-      manager.setSource(source, { autoplay, surfaceId: id });
+      // Don't autoplay a player that mounts already unfocused (isFocused
+      // false), else it'd flash play → pause on the next screen.
+      manager.setSource(source, {
+        autoplay: autoplay && isFocused !== false,
+        surfaceId: id,
+      });
       // Attach on mount / when the video identity changes. Other source
       // fields (title, headers) don't retrigger: identity is source.id.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -156,6 +181,33 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       });
       return () => sub.remove();
     }, [manager, id, pauseOnFocusLost]);
+
+    useEffect(() => {
+      if (isFocused === undefined) {
+        return;
+      }
+      const state = manager.store.getState();
+      if (isFocused) {
+        // Regained screen focus. If the engine is still ours, just resume;
+        // otherwise it moved to another video while we were blurred — reclaim
+        // it (same-id handoff means no reload if it never actually left).
+        if (
+          state.surfaceId === id &&
+          state.currentVideo?.id === sourceRef.current.id
+        ) {
+          manager.play();
+        } else {
+          manager.setSource(sourceRef.current, {
+            autoplay: true,
+            surfaceId: id,
+          });
+        }
+      } else if (state.surfaceId === id) {
+        // Lost screen focus while playing our video — pause. Guarded so we
+        // never pause a video that has already handed off elsewhere.
+        manager.pause();
+      }
+    }, [manager, id, isFocused]);
 
     useVideoEvents({
       onLoad: onLoadComplete,
