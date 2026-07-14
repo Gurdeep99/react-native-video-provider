@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -11,7 +17,7 @@ import { useVideoManager } from '../provider/VideoContext';
 import { usePlayback } from '../hooks/usePlayback';
 import { formatTime } from '../utils/formatTime';
 import { GestureOverlay } from './GestureOverlay';
-import { CloseIcon } from './icons';
+import { BackIcon } from './icons';
 import SvgIcons from './SvgIcons';
 
 export interface VideoControlsProps {
@@ -21,6 +27,16 @@ export interface VideoControlsProps {
   hideAfter?: number;
   /** Show the fullscreen toggle button. Default true. */
   showFullscreenButton?: boolean;
+  /**
+   * Mark this as a live stream: hides the seek bar/times and moves mute to
+   * the bottom-left. Default false.
+   */
+  live?: boolean;
+  /**
+   * Render a live indicator (e.g. a Lottie animation or a "LIVE" badge),
+   * shown in the control bar only while `live`.
+   */
+  liveIcon?: () => ReactNode;
   /** Called by the close (✕) button; button hidden when omitted. */
   onClose?: () => void;
 }
@@ -34,21 +50,17 @@ export function VideoControls({
   doubleTapSeek = 10,
   hideAfter = 3000,
   showFullscreenButton = true,
+  live = false,
+  liveIcon,
   onClose,
 }: VideoControlsProps) {
   const manager = useVideoManager();
-  const status = usePlayback((s) => s.status);
   const playing = usePlayback((s) => s.playing);
   const buffering = usePlayback((s) => s.buffering);
-  const loading = usePlayback((s) => s.loading);
   const position = usePlayback((s) => s.position);
   const duration = usePlayback((s) => s.duration);
   const muted = usePlayback((s) => s.muted);
   const fullscreen = usePlayback((s) => s.fullscreen);
-
-  // No known duration once loaded — a live stream or a video with no fixed
-  // end. There's nothing to seek, so hide the seek bar entirely.
-  const live = status !== 'idle' && !loading && duration <= 0;
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,7 +143,7 @@ export function VideoControls({
           <View style={styles.topRow}>
             {onClose ? (
               <Pressable style={styles.button} onPress={onClose} hitSlop={8}>
-                <CloseIcon size={18} color="#fff" />
+                <BackIcon size={18} color="#fff" />
               </Pressable>
             ) : (
               <View />
@@ -159,6 +171,7 @@ export function VideoControls({
           <View style={styles.bottomRow}>
             {live ? (
               <>
+                {liveIcon ? liveIcon() : null}
                 {muteButton}
                 <View style={styles.spacer} />
                 {fullscreenButton}

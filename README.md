@@ -109,6 +109,14 @@ const { enter, toggle } = useFullscreen();
 enter('landscape');
 ```
 
+Set `fullscreenOrientation` to a **landscape** value and physically rotating
+the device to landscape auto-enters fullscreen (rotating back to portrait
+exits) — YouTube-style. Requires the app to allow landscape at the OS level:
+
+```tsx
+<VideoPlayer source={video} fullscreenOrientation="landscape" />
+```
+
 Or as a standing lock, independent of fullscreen:
 
 ```tsx
@@ -156,8 +164,18 @@ optional controls in one component. Handy props:
 />
 ```
 
-For a live stream (no known duration), the built-in controls automatically
-hide the seek bar and show just mute + fullscreen.
+Pass `live` for a live stream: the controls hide the seek bar/times and show
+just mute + fullscreen. `liveIcon` renders a live indicator (e.g. a Lottie
+badge), and `thumbnail` shows a poster over the video during the initial load:
+
+```tsx
+<VideoPlayer
+  source={liveSource}
+  live
+  liveIcon={() => <LottieView source={liveAnim} autoPlay loop style={{ width: 44, height: 20 }} />}
+  thumbnail={() => <Image source={{ uri: poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+/>
+```
 
 ## Video feed (single engine, only the focused one plays)
 

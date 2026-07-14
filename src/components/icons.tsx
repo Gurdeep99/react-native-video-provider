@@ -1,4 +1,12 @@
-import Svg, { Line, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, {
+  ClipPath,
+  Defs,
+  G,
+  Line,
+  Path,
+  Polygon,
+  Rect,
+} from 'react-native-svg';
 
 interface IconProps {
   size: number;
@@ -23,6 +31,32 @@ export function PauseIcon({ size, color }: IconProps) {
 }
 
 export function CloseIcon({ size, color }: IconProps) {
+  return (
+    <Svg width={size || 20} height={size || 21} viewBox="0 0 20 21" fill="none">
+      <G clipPath="url(#clip0_25_6005)">
+        <Path
+          d="M12.5 16.3069L6.25 10.0569L12.5 3.80688"
+          stroke={color || '#000000'}
+          strokeWidth={1.25}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </G>
+      <Defs>
+        <ClipPath id="clip0_25_6005">
+          <Rect
+            width={size || 20}
+            height={size || 21}
+            fill="white"
+            transform="translate(0 0.0568848)"
+          />
+        </ClipPath>
+      </Defs>
+    </Svg>
+  );
+}
+
+export function BackIcon({ size, color }: IconProps) {
   return (
     <Svg
       width={size}

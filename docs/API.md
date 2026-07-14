@@ -23,7 +23,7 @@ A dumb mount point. Registers its native view under `surfaceId`; the engine
 renders into at most one surface at a time. `autoAttach` attaches the player
 on mount. Unmounting never destroys the player.
 
-### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? pauseOnFocusLost? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
+### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? pauseOnFocusLost? isFocused? live? liveIcon? thumbnail? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
 Convenience: `setSource` (handoff-aware) + `attach` + surface + built-in
 controls. Default `surfaceId` is `player:<source.id>`, so two VideoPlayers
 with the same source id naturally hand the engine to whichever mounted last.
@@ -36,6 +36,9 @@ with the same source id naturally hand the engine to whichever mounted last.
 - `fullscreenOrientation` forces one only while this player is fullscreen
   (applied when fullscreen opens — including via the built-in controls'
   button — restored when it closes, so the rest of the app is unaffected).
+  When it's a **landscape** value, physically rotating the device to
+  landscape also auto-enters fullscreen and rotating back exits it
+  (YouTube-style); needs the app to allow landscape at the OS level.
 - `pauseOnFocusLost` — pause when the app backgrounds while this player is
   the one playing. Default `true`; set `false` for background audio. Only the
   focused player reacts, so a video attached to another surface is untouched.
@@ -95,14 +98,14 @@ floating is a draggable 16:9 window with close/expand buttons.
 Docked bar (thumbnail surface + title + play/pause + close). Attach with
 `attach(surfaceId)` (default `"__au_mini__"`).
 
-### `<VideoControls doubleTapSeek? hideAfter? showFullscreenButton? onClose? />`
+### `<VideoControls doubleTapSeek? hideAfter? showFullscreenButton? live? liveIcon? onClose? />`
 Minimal chrome: play/pause, seek bar, times, mute, fullscreen toggle,
 tap-to-show, double-tap seek. Build your own from the hooks if you need
 custom design.
 
-For a live stream or any source with no known duration (`duration <= 0`
-once loaded), the seek bar and times are hidden automatically — only mute
-(moved to the bottom-left) and fullscreen remain.
+Pass `live` for a live stream: the seek bar and times are hidden and mute
+moves to the bottom-left, leaving mute + fullscreen. `liveIcon: () => ReactNode`
+renders a live indicator in the bar while `live` (e.g. a Lottie badge).
 
 ### `<GestureOverlay onSingleTap? onDoubleTapLeft? onDoubleTapRight? onLongPress?>`
 Tap-gesture layer used by VideoControls, exported as a building block.

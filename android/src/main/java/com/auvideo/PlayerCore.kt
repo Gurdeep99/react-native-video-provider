@@ -284,7 +284,29 @@ object PlayerCore {
     )
     currentSurfaceId = surfaceId
     pendingSurfaceId = null
+    reassertVideoOutput(pv, surfaceId, container)
     listener?.onAttach(surfaceId)
+  }
+
+  /**
+   * Re-parenting the PlayerView destroys and recreates its TextureView
+   * SurfaceTexture. VOD re-renders the last decoded frame onto the new
+   * surface immediately, but a LIVE stream (no buffered frame to re-render)
+   * can stay black. Re-binding the player to the view on the next frame
+   * forces the video output onto the fresh surface. No-op-safe for VOD.
+   */
+  private fun reassertVideoOutput(
+    pv: PlayerView,
+    surfaceId: String,
+    container: AuVideoSurfaceView,
+  ) {
+    mainHandler.post {
+      if (currentSurfaceId == surfaceId && pv.parent === container) {
+        val exo = player ?: return@post
+        pv.player = null
+        pv.player = exo
+      }
+    }
   }
 
   // --------------------------------------------------------------- events

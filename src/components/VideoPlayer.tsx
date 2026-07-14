@@ -1,7 +1,20 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { AppState, StyleSheet, View, type ViewProps } from 'react-native';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  type ReactNode,
+} from 'react';
+import {
+  AppState,
+  Dimensions,
+  StyleSheet,
+  View,
+  type ViewProps,
+} from 'react-native';
 import { VideoManager } from '../core/VideoManager';
 import { useVideoManager } from '../provider/VideoContext';
+import { usePlayback } from '../hooks/usePlayback';
 import { useVideoEvents } from '../hooks/useVideoEvents';
 import type { VideoEventMap } from '../types/events';
 import type {
@@ -41,6 +54,11 @@ export interface VideoPlayerProps extends ViewProps {
    * `'portrait'` for a vertical video). Applied when fullscreen opens —
    * including via the built-in controls' fullscreen button — and restored
    * when it closes, so the rest of the app is unaffected.
+   *
+   * When set to a landscape value (`'landscape'` / `'inverted-landscape'`),
+   * physically rotating the device to landscape also auto-enters fullscreen,
+   * and rotating back to portrait exits it (YouTube-style). This needs the
+   * app to allow landscape orientations at the OS level.
    */
   fullscreenOrientation?: OrientationLock;
   /**
@@ -64,6 +82,21 @@ export interface VideoPlayerProps extends ViewProps {
    * ```
    */
   isFocused?: boolean;
+  /**
+   * Mark this as a live stream: the built-in controls hide the seek bar/times
+   * and show `liveIcon` (if given). Default false.
+   */
+  live?: boolean;
+  /**
+   * Render a live indicator shown in the controls while `live` — e.g. a
+   * Lottie animation or a "LIVE" badge: `liveIcon={() => <LottieView … />}`.
+   */
+  liveIcon?: () => ReactNode;
+  /**
+   * Render a poster shown over the video only during the initial load
+   * (before the first frame) — e.g. `thumbnail={() => <Image … />}`.
+   */
+  thumbnail?: () => ReactNode;
   /** Fires once metadata (duration, dimensions) is available. */
   onLoadComplete?: (info: VideoEventMap['onLoad']) => void;
   /** Fires whenever buffering starts or stops. */
@@ -98,6 +131,9 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       fullscreenOrientation,
       pauseOnFocusLost = true,
       isFocused,
+      live = false,
+      liveIcon,
+      thumbnail,
       onLoadComplete,
       onBuffering,
       onError,
@@ -108,6 +144,10 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
   ) => {
     const manager = useVideoManager();
     const id = surfaceId ?? `player:${source.id}`;
+
+    // Poster is shown only during the initial load — `loading` is true from
+    // setSource until onLoad, and stays false for mid-stream buffering.
+    const loading = usePlayback((s) => s.loading);
 
     // Read the latest source without retriggering effects on every render
     // (source is usually a fresh object literal each render).
@@ -168,6 +208,41 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       return () => manager.setFullscreenOrientation(null);
     }, [manager, fullscreenOrientation]);
 
+    // Auto fullscreen on physical rotation (YouTube-style): when
+    // `fullscreenOrientation` is a landscape value, rotating the device to
+    // landscape enters fullscreen and rotating back to portrait exits.
+    // Enters with 'auto' (not a forced lock) so the device sensor keeps
+    // driving and rotating back can exit. Requires the app to actually allow
+    // landscape (Info.plist / AndroidManifest) — otherwise the window never
+    // reports landscape and this stays inert.
+    useEffect(() => {
+      const wantsLandscape =
+        fullscreenOrientation === 'landscape' ||
+        fullscreenOrientation === 'inverted-landscape';
+      if (!wantsLandscape) {
+        return;
+      }
+      const onChange = ({
+        window,
+      }: {
+        window: { width: number; height: number };
+      }) => {
+        const landscape = window.width > window.height;
+        const state = manager.store.getState();
+        // Ignore when another video owns the engine and we're not fullscreen.
+        if (state.surfaceId !== id && !state.fullscreen) {
+          return;
+        }
+        if (landscape && !state.fullscreen) {
+          manager.enterFullscreen('auto');
+        } else if (!landscape && state.fullscreen) {
+          manager.exitFullscreen();
+        }
+      };
+      const sub = Dimensions.addEventListener('change', onChange);
+      return () => sub.remove();
+    }, [manager, id, fullscreenOrientation]);
+
     useEffect(() => {
       if (!pauseOnFocusLost) {
         return;
@@ -218,7 +293,12 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     return (
       <View style={[styles.container, style]} {...rest}>
         <VideoSurface surfaceId={id} style={styles.surface} />
-        {controls ? <VideoControls /> : null}
+        {thumbnail && loading ? (
+          <View style={styles.surface} pointerEvents="none">
+            {thumbnail()}
+          </View>
+        ) : null}
+        {controls ? <VideoControls live={live} liveIcon={liveIcon} /> : null}
       </View>
     );
   }
