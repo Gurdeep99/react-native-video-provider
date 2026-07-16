@@ -20,8 +20,8 @@ Feed ──▶ Detail ──▶ Fullscreen (rotation unlocked) ──▶ Floatin
   the engine; the player just re-parents to the new surface
 - 📱 **Single-engine feed** — `VideoFeed`, a TikTok/Reels-style list where
   only the scrolled-into-focus video plays, on one player, flat memory
-- 📺 **Fullscreen** — built-in host that unlocks rotation while visible and
-  restores the previous orientation lock on exit
+- 📺 **Fullscreen** — built-in host that locks landscape (no accidental
+  sensor rotation) and restores the previous orientation on exit
 - 🧭 **Orientation control** — force portrait/landscape (+ inverted) per
   player, scoped to fullscreen, or as a standing lock
 - ⏸️ **Focus-aware** — auto-pause on app background and on screen navigation
@@ -88,7 +88,7 @@ the engine is untouched and playback continues from the exact frame:
 ```tsx
 const player = useVideo();
 
-player.enterFullscreen(); // rotation unlocks while visible
+player.enterFullscreen(); // locks landscape (no sensor rotation)
 player.showFloating();    // draggable in-app window
 player.enterPiP();        // system picture-in-picture
 ```
@@ -109,12 +109,12 @@ const { enter, toggle } = useFullscreen();
 enter('landscape');
 ```
 
-Set `fullscreenOrientation` to a **landscape** value and physically rotating
-the device to landscape auto-enters fullscreen (rotating back to portrait
-exits) — YouTube-style. Requires the app to allow landscape at the OS level:
+Opt in to YouTube-style auto fullscreen with `autoFullscreenOnRotate` (off by
+default): physically rotating the device to landscape enters fullscreen and
+rotating back exits. Requires the app to allow landscape at the OS level:
 
 ```tsx
-<VideoPlayer source={video} fullscreenOrientation="landscape" />
+<VideoPlayer source={video} autoFullscreenOnRotate />
 ```
 
 Or as a standing lock, independent of fullscreen:
@@ -238,9 +238,9 @@ useVideoEvents({
 ### iOS — fullscreen rotation
 
 iOS asks the AppDelegate which orientations are allowed. Forward that to the
-library so rotation unlocks while fullscreen is visible and `setOrientation`
-/ the `orientation` prop can force a rotation (skip this only if you don't
-use those features and your app already supports all orientations):
+library so fullscreen can rotate to landscape and `setOrientation` / the
+`orientation` prop can force a rotation (skip this only if you don't use those
+features and your app already supports all orientations):
 
 ```swift
 // AppDelegate.swift

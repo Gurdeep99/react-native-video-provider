@@ -81,12 +81,15 @@ attaches the player the moment the view registers — this makes navigation timi
 4. If `id` differs → `replaceSource` on the engine (single load, no player recreation).
 
 ### Fullscreen
-1. `enterFullscreen()` → provider mounts the fullscreen host (a `Modal` covering everything,
-   all orientations allowed) containing `<VideoSurface id="__fullscreen__">`.
-2. Native side **unlocks rotation**: Android sets `requestedOrientation = FULL_SENSOR` and hides
-   system bars; iOS widens the supported-orientation mask (app hooks
-   `AuVideoOrientation` in AppDelegate) and requests a geometry update.
-3. The user can rotate freely while fullscreen is visible.
+1. `enterFullscreen()` → provider mounts the fullscreen host (an in-window absolute overlay
+   covering everything — not a `Modal`, which is a separate Android window that drops the
+   re-parented video surface) containing `<VideoSurface id="__fullscreen__">`.
+2. Native side **locks orientation** (default landscape — no sensor rotation): Android sets
+   `requestedOrientation` to the locked value and hides system bars; iOS narrows the
+   supported-orientation mask to the lock (app hooks `AuVideoOrientation` in AppDelegate) and
+   requests a geometry update. Pass `'auto'` to instead unlock to the sensor.
+3. Orientation only changes by tap (fullscreen button / `setOrientation`), not the device sensor,
+   unless `autoFullscreenOnRotate` / explicit `'auto'` opts into sensor-follow.
 4. `exitFullscreen()` restores the previous orientation lock (e.g. portrait-only app returns to
    portrait), unmounts the host, and re-attaches the player to the previous surface.
 

@@ -55,12 +55,14 @@ export interface VideoPlayerProps extends ViewProps {
    * including via the built-in controls' fullscreen button — and restored
    * when it closes, so the rest of the app is unaffected.
    *
-   * When set to a landscape value (`'landscape'` / `'inverted-landscape'`),
-   * physically rotating the device to landscape also auto-enters fullscreen,
-   * and rotating back to portrait exits it (YouTube-style). This needs the
-   * app to allow landscape orientations at the OS level.
    */
   fullscreenOrientation?: OrientationLock;
+  /**
+   * YouTube-style: physically rotating the device to landscape auto-enters
+   * fullscreen, and rotating back to portrait exits it. Off by default.
+   * Requires the app to allow landscape at the OS level.
+   */
+  autoFullscreenOnRotate?: boolean;
   /**
    * Pause this player when it loses focus — i.e. the app goes to the
    * background while this player's surface is the one currently playing.
@@ -129,6 +131,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       muted,
       orientation,
       fullscreenOrientation,
+      autoFullscreenOnRotate = false,
       pauseOnFocusLost = true,
       isFocused,
       live = false,
@@ -208,18 +211,13 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       return () => manager.setFullscreenOrientation(null);
     }, [manager, fullscreenOrientation]);
 
-    // Auto fullscreen on physical rotation (YouTube-style): when
-    // `fullscreenOrientation` is a landscape value, rotating the device to
-    // landscape enters fullscreen and rotating back to portrait exits.
-    // Enters with 'auto' (not a forced lock) so the device sensor keeps
-    // driving and rotating back can exit. Requires the app to actually allow
-    // landscape (Info.plist / AndroidManifest) — otherwise the window never
-    // reports landscape and this stays inert.
+    // Opt-in YouTube-style auto fullscreen on physical rotation: rotating the
+    // device to landscape enters fullscreen and rotating back exits. Enters
+    // with 'auto' (not a forced lock) so the device sensor keeps driving and
+    // rotating back can exit. Off unless `autoFullscreenOnRotate` is set, and
+    // needs the app to allow landscape at the OS level.
     useEffect(() => {
-      const wantsLandscape =
-        fullscreenOrientation === 'landscape' ||
-        fullscreenOrientation === 'inverted-landscape';
-      if (!wantsLandscape) {
+      if (!autoFullscreenOnRotate) {
         return;
       }
       const onChange = ({
@@ -241,7 +239,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       };
       const sub = Dimensions.addEventListener('change', onChange);
       return () => sub.remove();
-    }, [manager, id, fullscreenOrientation]);
+    }, [manager, id, autoFullscreenOnRotate]);
 
     useEffect(() => {
       if (!pauseOnFocusLost) {

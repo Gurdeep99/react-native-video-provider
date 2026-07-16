@@ -371,13 +371,18 @@ export class VideoManager {
   // ------------------------------------------------------------ modes
 
   /**
-   * Show the built-in fullscreen host. Rotation unlocks by default; pass an
-   * orientation (or set VideoPlayer's `fullscreenOrientation` prop) to force
-   * one for the fullscreen session only. That scoped orientation is the
-   * highest priority — it's applied in the SAME native call as entering
-   * fullscreen (never as a separate follow-up call), so there is no
-   * unlocked frame where the sensor could win before the lock takes effect.
-   * Restored on exit; the rest of the app never sees the lock.
+   * Show the built-in fullscreen host.
+   *
+   * Fullscreen LOCKS orientation rather than following the device sensor:
+   * tapping fullscreen rotates to landscape and it stays there regardless of
+   * how the phone is held (no accidental sensor rotation). Priority:
+   *   1. explicit `orientation` arg (a real value; a press event is ignored)
+   *   2. VideoPlayer's `fullscreenOrientation` prop
+   *   3. a standing `setOrientation()` lock
+   *   4. default `'landscape'`
+   * Pass `'auto'` explicitly (as the opt-in `autoFullscreenOnRotate` feature
+   * does) to instead follow the sensor. The lock is applied in the SAME
+   * native call as entering, and restored on exit.
    */
   enterFullscreen(orientation?: OrientationLock): void {
     if (this.store.getState().fullscreen) {
@@ -387,16 +392,20 @@ export class VideoManager {
     this.setMode('fullscreen');
     // `enter` is often passed straight to onPress, so the argument may be a
     // press event — only honor real orientation values.
-    const requested = ORIENTATION_LOCKS.includes(orientation as OrientationLock)
+    const explicit = ORIENTATION_LOCKS.includes(orientation as OrientationLock)
       ? (orientation as OrientationLock)
-      : this.fullscreenOrientationDefault;
-    // A scoped override wins outright; otherwise carry any standing
-    // setOrientation() lock through fullscreen unchanged (still higher
-    // priority than the sensor unlock — 'auto' just means neither applies).
-    const lock =
-      requested && requested !== 'auto'
-        ? requested
-        : this.store.getState().orientationLock;
+      : undefined;
+    let lock: OrientationLock;
+    if (explicit) {
+      // Includes an explicit 'auto' → sensor-follow (autoFullscreenOnRotate).
+      lock = explicit;
+    } else if (this.fullscreenOrientationDefault) {
+      lock = this.fullscreenOrientationDefault;
+    } else {
+      const standing = this.store.getState().orientationLock;
+      // No sensor unlock: default to a locked landscape, rotate only by tap.
+      lock = standing !== 'auto' ? standing : 'landscape';
+    }
     NativeAuVideo.enterFullscreen(lock);
     this.events.emit('onEnterFullscreen', undefined);
   }

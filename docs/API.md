@@ -14,7 +14,7 @@ built-in fullscreen + floating hosts above the app.
 
 | `config` field | Default | Meaning |
 |---|---|---|
-| `fullscreenHost` | `true` | Render the built-in fullscreen Modal host |
+| `fullscreenHost` | `true` | Render the built-in fullscreen host (in-window overlay) |
 | `floatingHost` | `true` | Render the built-in draggable floating host |
 | `pauseOnDetach` | `false` | Pause when the active surface unmounts (default keeps audio running) |
 
@@ -23,7 +23,7 @@ A dumb mount point. Registers its native view under `surfaceId`; the engine
 renders into at most one surface at a time. `autoAttach` attaches the player
 on mount. Unmounting never destroys the player.
 
-### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? pauseOnFocusLost? isFocused? live? liveIcon? thumbnail? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
+### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? autoFullscreenOnRotate? pauseOnFocusLost? isFocused? live? liveIcon? thumbnail? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
 Convenience: `setSource` (handoff-aware) + `attach` + surface + built-in
 controls. Default `surfaceId` is `player:<source.id>`, so two VideoPlayers
 with the same source id naturally hand the engine to whichever mounted last.
@@ -36,8 +36,8 @@ with the same source id naturally hand the engine to whichever mounted last.
 - `fullscreenOrientation` forces one only while this player is fullscreen
   (applied when fullscreen opens — including via the built-in controls'
   button — restored when it closes, so the rest of the app is unaffected).
-  When it's a **landscape** value, physically rotating the device to
-  landscape also auto-enters fullscreen and rotating back exits it
+- `autoFullscreenOnRotate` — opt-in (default off). Physically rotating the
+  device to landscape auto-enters fullscreen and rotating back exits it
   (YouTube-style); needs the app to allow landscape at the OS level.
 - `pauseOnFocusLost` — pause when the app backgrounds while this player is
   the one playing. Default `true`; set `false` for background audio. Only the
@@ -91,7 +91,8 @@ for the engine on mount); focus is driven from FlatList viewability.
 
 ### `<FullscreenPlayer />` / `<FloatingPlayer width? />`
 The built-in hosts (rendered by the provider — mount manually only if you
-disabled them in config). Fullscreen allows all orientations while visible;
+disabled them in config). Fullscreen locks landscape by default (no sensor
+rotation; pass `fullscreenOrientation` to change it);
 floating is a draggable 16:9 window with close/expand buttons.
 
 ### `<MiniPlayer surfaceId? onPress? onClose? />`

@@ -110,11 +110,12 @@ describe('VideoManager', () => {
   });
 
   describe('fullscreen', () => {
-    it('unlocks natively and restores the previous surface on exit', () => {
+    it('locks landscape by default and restores the previous surface on exit', () => {
       manager.attach('feed');
       manager.enterFullscreen();
 
-      expect(native.enterFullscreen).toHaveBeenLastCalledWith('auto');
+      // Default fullscreen locks landscape (no sensor rotation).
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('landscape');
       expect(manager.store.getState().fullscreen).toBe(true);
       expect(manager.store.getState().mode).toBe('fullscreen');
 
@@ -196,6 +197,13 @@ describe('VideoManager', () => {
 
       manager.setFullscreenOrientation(null);
       manager.enterFullscreen();
+      // No prop, no standing lock → default landscape lock (no sensor).
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('landscape');
+    });
+
+    it('follows the sensor only when entered with explicit auto', () => {
+      // autoFullscreenOnRotate enters this way to allow rotate-back-to-exit.
+      manager.enterFullscreen('auto');
       expect(native.enterFullscreen).toHaveBeenLastCalledWith('auto');
     });
   });
