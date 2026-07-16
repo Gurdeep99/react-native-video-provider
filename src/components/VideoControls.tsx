@@ -124,13 +124,6 @@ export function VideoControls({
         onDoubleTapLeft={() => manager.seekBy(-doubleTapSeek)}
         onDoubleTapRight={() => manager.seekBy(doubleTapSeek)}
       />
-      {/* Live badge: stuck to the top-right, always visible while live —
-          it does NOT hide with the auto-hiding controls. */}
-      {live && liveIcon ? (
-        <View style={styles.liveBadge} pointerEvents="none">
-          {liveIcon()}
-        </View>
-      ) : null}
       {visible ? (
         <View style={styles.chrome} pointerEvents="box-none">
           <View style={styles.topRow}>
@@ -188,6 +181,14 @@ export function VideoControls({
           </View>
         </View>
       ) : null}
+      {/* Live badge: top-left, above the controls, always visible while live —
+          it does NOT hide with the auto-hiding chrome (rendered last + high
+          zIndex so it stays on top). */}
+      {live && liveIcon ? (
+        <View style={styles.liveBadge} pointerEvents="none">
+          {liveIcon()}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -204,8 +205,10 @@ const styles = StyleSheet.create({
   },
   liveBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 10,
+    left: 10,
+    zIndex: 10,
+    elevation: 10,
   },
   topRow: {
     flexDirection: 'row',

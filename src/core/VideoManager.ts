@@ -403,8 +403,6 @@ export class VideoManager {
     if (this.store.getState().fullscreen) {
       return;
     }
-    this.set({ fullscreen: true, floating: false });
-    this.setMode('fullscreen');
     // `enter` is often passed straight to onPress, so the argument may be a
     // press event — only honor real orientation values.
     const explicit = ORIENTATION_LOCKS.includes(orientation as OrientationLock)
@@ -412,8 +410,13 @@ export class VideoManager {
       : undefined;
     // Explicit arg (incl. 'auto' for sensor-follow) > prop > locked landscape.
     const lock = explicit ?? this.fullscreenOrientationDefault ?? 'landscape';
-    // Stored so the iOS fullscreen host can lock the Modal's supportedOrientations.
-    this.set({ fullscreenLock: lock });
+    // CRITICAL: set `fullscreen` and `fullscreenLock` in ONE update so the iOS
+    // fullscreen Modal mounts with the right `supportedOrientations` from the
+    // first render. If the Modal mounted with the default first and the lock
+    // arrived a render later, iOS would present it portrait and never
+    // re-rotate an already-presented modal.
+    this.set({ fullscreen: true, floating: false, fullscreenLock: lock });
+    this.setMode('fullscreen');
     NativeAuVideo.enterFullscreen(lock);
     this.events.emit('onEnterFullscreen', undefined);
   }
