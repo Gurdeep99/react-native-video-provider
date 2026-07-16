@@ -109,8 +109,19 @@ const { enter, toggle } = useFullscreen();
 enter('landscape');
 ```
 
-Opt in to YouTube-style auto fullscreen with `autoFullscreenOnRotate` (off by
-default): physically rotating the device to landscape enters fullscreen and
+Fullscreen **locks** orientation — it never follows the device sensor.
+Tapping the fullscreen button rotates to landscape (default) and it stays put
+however you hold the phone; tapping exit returns to portrait. To also stop the
+*inline* video from sensor-rotating with the rest of the app, set
+`lockPortrait` on the provider — the app stays portrait and only fullscreen
+rotates to landscape:
+
+```tsx
+<VideoProvider config={{ lockPortrait: true }}>
+```
+
+Opt in to YouTube-style sensor auto fullscreen with `autoFullscreenOnRotate`
+(off by default): physically rotating to landscape enters fullscreen and
 rotating back exits. Requires the app to allow landscape at the OS level:
 
 ```tsx

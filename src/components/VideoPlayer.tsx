@@ -196,6 +196,13 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     }, [manager, muted]);
 
     useEffect(() => {
+      // Publish live state + badge to the store so the built-in fullscreen
+      // host (which renders its own controls) shows them too.
+      manager.setLive(live, liveIcon ?? null);
+      return () => manager.setLive(false);
+    }, [manager, live, liveIcon]);
+
+    useEffect(() => {
       if (!orientation || orientation === 'auto') {
         return;
       }
@@ -296,7 +303,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
             {thumbnail()}
           </View>
         ) : null}
-        {controls ? <VideoControls live={live} liveIcon={liveIcon} /> : null}
+        {controls ? <VideoControls /> : null}
       </View>
     );
   }

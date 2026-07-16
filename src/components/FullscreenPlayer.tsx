@@ -1,34 +1,68 @@
 import { useEffect } from 'react';
-import { BackHandler, StatusBar, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  Modal,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { FULLSCREEN_SURFACE_ID } from '../core/VideoManager';
 import { usePlayback } from '../hooks/usePlayback';
 import { useVideoManager } from '../provider/VideoContext';
+import type { OrientationLock } from '../types/video';
 import { VideoControls } from './VideoControls';
 import { VideoSurface } from './VideoSurface';
 
+type ModalOrientation =
+  | 'portrait'
+  | 'portrait-upside-down'
+  | 'landscape'
+  | 'landscape-left'
+  | 'landscape-right';
+
+const ALL_ORIENTATIONS: ModalOrientation[] = [
+  'portrait',
+  'portrait-upside-down',
+  'landscape',
+  'landscape-left',
+  'landscape-right',
+];
+
+/** Which orientations the iOS Modal may present — this is what locks it. */
+function modalOrientations(lock: OrientationLock): ModalOrientation[] {
+  switch (lock) {
+    case 'portrait':
+    case 'inverted-portrait':
+      return ['portrait', 'portrait-upside-down'];
+    case 'landscape':
+    case 'inverted-landscape':
+      return ['landscape', 'landscape-left', 'landscape-right'];
+    default:
+      return ALL_ORIENTATIONS; // 'auto' → follow the sensor
+  }
+}
+
 /**
- * Built-in fullscreen host, rendered by VideoProvider. While visible,
- * rotation is unlocked natively (all orientations allowed); on exit the
- * previous orientation lock is restored and the player re-attaches to the
- * surface it came from.
+ * Built-in fullscreen host, rendered by VideoProvider.
  *
- * Implemented as an in-window absolute overlay (not a Modal). A Modal is a
- * separate Android window, and re-parenting the player's TextureView into it
- * — then rotating — drops the video surface (black screen, audio only) for
- * live streams. The floating host already proves in-window re-parenting is
- * reliable, so fullscreen uses the same approach.
- *
- * Rendered automatically — you normally never mount this yourself. Apps
- * that want fullscreen "inside" a navigation screen can instead render a
- * plain <VideoSurface> there and call attach().
+ * Platform split:
+ * - iOS uses a `Modal` whose `supportedOrientations` are derived from the
+ *   locked fullscreen orientation. That's how iOS rotates a fullscreen video
+ *   (and locks out the portrait sensor) WITHOUT app-wide landscape config.
+ * - Android uses an in-window absolute overlay (a Modal is a separate window,
+ *   and re-parenting the player's TextureView into it drops the video surface
+ *   — black screen, audio only — for live streams). Rotation is driven by the
+ *   native `requestedOrientation` lock.
  */
 export function FullscreenPlayer() {
   const manager = useVideoManager();
   const fullscreen = usePlayback((s) => s.fullscreen);
+  const fullscreenLock = usePlayback((s) => s.fullscreenLock);
 
-  // Android hardware back exits fullscreen (Modal used to do this for us).
+  // Android hardware back exits fullscreen (the iOS Modal handles its own).
   useEffect(() => {
-    if (!fullscreen) {
+    if (!fullscreen || Platform.OS !== 'android') {
       return;
     }
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -42,8 +76,8 @@ export function FullscreenPlayer() {
     return null;
   }
 
-  return (
-    <View style={styles.overlay}>
+  const content = (
+    <>
       <StatusBar hidden />
       <VideoSurface
         surfaceId={FULLSCREEN_SURFACE_ID}
@@ -51,11 +85,33 @@ export function FullscreenPlayer() {
         style={styles.surface}
       />
       <VideoControls onClose={() => manager.exitFullscreen()} />
-    </View>
+    </>
   );
+
+  if (Platform.OS === 'ios') {
+    return (
+      <Modal
+        visible
+        transparent={false}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        statusBarTranslucent
+        supportedOrientations={modalOrientations(fullscreenLock)}
+        onRequestClose={() => manager.exitFullscreen()}
+      >
+        <View style={styles.container}>{content}</View>
+      </Modal>
+    );
+  }
+
+  return <View style={styles.overlay}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
   overlay: {
     position: 'absolute',
     top: 0,

@@ -1,3 +1,8 @@
+import type { ReactNode } from 'react';
+
+/** Renders a live indicator (badge / Lottie) shown while a live stream plays. */
+export type LiveIconRenderer = () => ReactNode;
+
 export interface VideoSource {
   /**
    * Stable identity of the video. The engine uses this for same-video
@@ -71,8 +76,14 @@ export interface VideoState {
   /** Orientation forced via `setOrientation` (not the fullscreen unlock). */
   orientationLock: OrientationLock;
   fullscreen: boolean;
+  /** Orientation locked for the current fullscreen session ('auto' = sensor). */
+  fullscreenLock: OrientationLock;
   pip: boolean;
   floating: boolean;
+  /** True while the active video is a live stream (hides the seek bar). */
+  live: boolean;
+  /** Renderer for the persistent live badge, or null. */
+  liveIcon: LiveIconRenderer | null;
   mode: PlayerMode;
   /** Surface the player is currently requested/attached to. */
   surfaceId: string | null;
@@ -90,8 +101,9 @@ export interface SetSourceOptions {
 
 export interface VideoProviderConfig {
   /**
-   * Render the built-in fullscreen host (a Modal that unlocks rotation).
-   * Set false if you render your own fullscreen surface. Default true.
+   * Render the built-in fullscreen host (an in-window overlay that locks
+   * landscape). Set false if you render your own fullscreen surface.
+   * Default true.
    */
   fullscreenHost?: boolean;
   /**
@@ -100,4 +112,10 @@ export interface VideoProviderConfig {
   floatingHost?: boolean;
   /** Pause playback when the active surface unmounts. Default false. */
   pauseOnDetach?: boolean;
+  /**
+   * Lock the whole app to portrait so the video never sensor-rotates inline —
+   * only the fullscreen host rotates to landscape (on tap). Default false.
+   * On iOS this needs the AppDelegate forwarding to `AuVideoOrientation`.
+   */
+  lockPortrait?: boolean;
 }

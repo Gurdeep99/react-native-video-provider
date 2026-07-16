@@ -17,6 +17,7 @@ built-in fullscreen + floating hosts above the app.
 | `fullscreenHost` | `true` | Render the built-in fullscreen host (in-window overlay) |
 | `floatingHost` | `true` | Render the built-in draggable floating host |
 | `pauseOnDetach` | `false` | Pause when the active surface unmounts (default keeps audio running) |
+| `lockPortrait` | `false` | Lock the app portrait so the video never sensor-rotates inline — only fullscreen rotates to landscape (on tap). iOS needs the AppDelegate forwarding |
 
 ### `<VideoSurface surfaceId autoAttach? …ViewProps>`
 A dumb mount point. Registers its native view under `surfaceId`; the engine
@@ -99,14 +100,16 @@ floating is a draggable 16:9 window with close/expand buttons.
 Docked bar (thumbnail surface + title + play/pause + close). Attach with
 `attach(surfaceId)` (default `"__au_mini__"`).
 
-### `<VideoControls doubleTapSeek? hideAfter? showFullscreenButton? live? liveIcon? onClose? />`
+### `<VideoControls doubleTapSeek? hideAfter? showFullscreenButton? onClose? />`
 Minimal chrome: play/pause, seek bar, times, mute, fullscreen toggle,
 tap-to-show, double-tap seek. Build your own from the hooks if you need
 custom design.
 
-Pass `live` for a live stream: the seek bar and times are hidden and mute
-moves to the bottom-left, leaving mute + fullscreen. `liveIcon: () => ReactNode`
-renders a live indicator in the bar while `live` (e.g. a Lottie badge).
+Live state comes from the store (set via `VideoPlayer`'s `live` / `liveIcon`,
+or `useVideo().setLive(live, liveIcon)`), so the same controls show it inline
+and in the fullscreen host. When live: the seek bar/times are hidden (mute +
+fullscreen remain) and the `liveIcon` badge sticks to the **top-right, always
+visible** — it does not auto-hide with the rest of the controls.
 
 ### `<GestureOverlay onSingleTap? onDoubleTapLeft? onDoubleTapRight? onLongPress?>`
 Tap-gesture layer used by VideoControls, exported as a building block.

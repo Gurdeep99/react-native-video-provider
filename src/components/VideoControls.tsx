@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -27,31 +21,21 @@ export interface VideoControlsProps {
   hideAfter?: number;
   /** Show the fullscreen toggle button. Default true. */
   showFullscreenButton?: boolean;
-  /**
-   * Mark this as a live stream: hides the seek bar/times and moves mute to
-   * the bottom-left. Default false.
-   */
-  live?: boolean;
-  /**
-   * Render a live indicator (e.g. a Lottie animation or a "LIVE" badge),
-   * shown in the control bar only while `live`.
-   */
-  liveIcon?: () => ReactNode;
   /** Called by the close (✕) button; button hidden when omitted. */
   onClose?: () => void;
 }
 
 /**
  * Minimal built-in chrome: play/pause, seek bar, time, mute and fullscreen
- * toggles, with tap-to-show / double-tap-to-seek gestures. Apps wanting a
- * custom design can ignore this and build on usePlayback()/useVideo().
+ * toggles, with tap-to-show / double-tap-to-seek gestures. `live` and the
+ * live badge come from the store (set via VideoPlayer's `live` / `liveIcon`),
+ * so they show inline and in the fullscreen host alike. Apps wanting a custom
+ * design can ignore this and build on usePlayback()/useVideo().
  */
 export function VideoControls({
   doubleTapSeek = 10,
   hideAfter = 3000,
   showFullscreenButton = true,
-  live = false,
-  liveIcon,
   onClose,
 }: VideoControlsProps) {
   const manager = useVideoManager();
@@ -61,6 +45,8 @@ export function VideoControls({
   const duration = usePlayback((s) => s.duration);
   const muted = usePlayback((s) => s.muted);
   const fullscreen = usePlayback((s) => s.fullscreen);
+  const live = usePlayback((s) => s.live);
+  const liveIcon = usePlayback((s) => s.liveIcon);
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,6 +124,13 @@ export function VideoControls({
         onDoubleTapLeft={() => manager.seekBy(-doubleTapSeek)}
         onDoubleTapRight={() => manager.seekBy(doubleTapSeek)}
       />
+      {/* Live badge: stuck to the top-right, always visible while live —
+          it does NOT hide with the auto-hiding controls. */}
+      {live && liveIcon ? (
+        <View style={styles.liveBadge} pointerEvents="none">
+          {liveIcon()}
+        </View>
+      ) : null}
       {visible ? (
         <View style={styles.chrome} pointerEvents="box-none">
           <View style={styles.topRow}>
@@ -171,7 +164,6 @@ export function VideoControls({
           <View style={styles.bottomRow}>
             {live ? (
               <>
-                {liveIcon ? liveIcon() : null}
                 {muteButton}
                 <View style={styles.spacer} />
                 {fullscreenButton}
@@ -209,6 +201,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'space-between',
+  },
+  liveBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
   },
   topRow: {
     flexDirection: 'row',

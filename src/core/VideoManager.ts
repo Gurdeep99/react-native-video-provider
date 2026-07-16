@@ -7,6 +7,7 @@ import {
 } from '../state/createVideoStore';
 import type { VideoEventMap, VideoEventName } from '../types/events';
 import type {
+  LiveIconRenderer,
   OrientationLock,
   PlaybackStatus,
   PlayerMode,
@@ -71,6 +72,7 @@ export class VideoManager {
     fullscreenHost: true,
     floatingHost: true,
     pauseOnDetach: false,
+    lockPortrait: false,
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
@@ -96,6 +98,10 @@ export class VideoManager {
     this.initialized = true;
     NativeAuVideo.nativeInit();
     this.subscribeNative();
+    if (this.config.lockPortrait) {
+      // Keep the app portrait inline; fullscreen still rotates to landscape.
+      this.setOrientation('portrait');
+    }
   }
 
   // ---------------------------------------------------------------- events
@@ -308,6 +314,14 @@ export class VideoManager {
   }
 
   /**
+   * Mark the active video live (hides the seek bar) and register the badge
+   * renderer, so both inline and the built-in fullscreen host show them.
+   */
+  setLive(live: boolean, liveIcon: LiveIconRenderer | null = null): void {
+    this.set({ live, liveIcon: live ? liveIcon : null });
+  }
+
+  /**
    * Force a screen orientation (`'landscape'`, `'inverted-portrait'`, …),
    * overriding the app's own lock until cleared with `'auto'`.
    */
@@ -378,11 +392,12 @@ export class VideoManager {
    * how the phone is held (no accidental sensor rotation). Priority:
    *   1. explicit `orientation` arg (a real value; a press event is ignored)
    *   2. VideoPlayer's `fullscreenOrientation` prop
-   *   3. a standing `setOrientation()` lock
-   *   4. default `'landscape'`
-   * Pass `'auto'` explicitly (as the opt-in `autoFullscreenOnRotate` feature
-   * does) to instead follow the sensor. The lock is applied in the SAME
-   * native call as entering, and restored on exit.
+   *   3. default `'landscape'`
+   * Note it does NOT inherit a standing `setOrientation()` lock — so an app
+   * kept portrait inline (e.g. `lockPortrait`) still rotates to landscape in
+   * fullscreen. Pass `'auto'` explicitly (as `autoFullscreenOnRotate` does)
+   * to follow the sensor instead. The lock is applied in the SAME native call
+   * as entering, and the standing lock is restored on exit.
    */
   enterFullscreen(orientation?: OrientationLock): void {
     if (this.store.getState().fullscreen) {
@@ -395,17 +410,10 @@ export class VideoManager {
     const explicit = ORIENTATION_LOCKS.includes(orientation as OrientationLock)
       ? (orientation as OrientationLock)
       : undefined;
-    let lock: OrientationLock;
-    if (explicit) {
-      // Includes an explicit 'auto' → sensor-follow (autoFullscreenOnRotate).
-      lock = explicit;
-    } else if (this.fullscreenOrientationDefault) {
-      lock = this.fullscreenOrientationDefault;
-    } else {
-      const standing = this.store.getState().orientationLock;
-      // No sensor unlock: default to a locked landscape, rotate only by tap.
-      lock = standing !== 'auto' ? standing : 'landscape';
-    }
+    // Explicit arg (incl. 'auto' for sensor-follow) > prop > locked landscape.
+    const lock = explicit ?? this.fullscreenOrientationDefault ?? 'landscape';
+    // Stored so the iOS fullscreen host can lock the Modal's supportedOrientations.
+    this.set({ fullscreenLock: lock });
     NativeAuVideo.enterFullscreen(lock);
     this.events.emit('onEnterFullscreen', undefined);
   }
@@ -419,7 +427,7 @@ export class VideoManager {
     // fullscreen-scoped override was never written to state, so this
     // naturally drops it without needing to track whether one was applied.
     NativeAuVideo.exitFullscreen(this.store.getState().orientationLock);
-    this.set({ fullscreen: false });
+    this.set({ fullscreen: false, fullscreenLock: 'auto' });
     this.events.emit('onExitFullscreen', undefined);
     this.restoreInlineSurface();
   }

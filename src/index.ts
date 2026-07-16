@@ -50,6 +50,7 @@ export type {
   VideoSource,
   ResizeMode,
   OrientationLock,
+  LiveIconRenderer,
   PlayerMode,
   PlaybackStatus,
   VideoError,

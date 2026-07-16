@@ -176,10 +176,12 @@ describe('VideoManager', () => {
       );
     });
 
-    it('carries a standing lock through an unscoped fullscreen unchanged', () => {
+    it('defaults to landscape even with a standing portrait lock, and restores it on exit', () => {
+      // The `lockPortrait` use case: app is portrait inline, fullscreen still
+      // rotates to landscape; exiting returns to the portrait lock.
       manager.setOrientation('portrait');
       manager.enterFullscreen(); // no scoped override
-      expect(native.enterFullscreen).toHaveBeenLastCalledWith('portrait');
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('landscape');
 
       manager.exitFullscreen();
       expect(native.exitFullscreen).toHaveBeenLastCalledWith('portrait');
@@ -205,6 +207,19 @@ describe('VideoManager', () => {
       // autoFullscreenOnRotate enters this way to allow rotate-back-to-exit.
       manager.enterFullscreen('auto');
       expect(native.enterFullscreen).toHaveBeenLastCalledWith('auto');
+    });
+
+    it('lockPortrait config locks the app portrait on init', () => {
+      manager.destroy();
+      jest.clearAllMocks();
+      manager.init({ lockPortrait: true });
+      expect(native.setOrientation).toHaveBeenLastCalledWith('portrait');
+      expect(manager.store.getState().orientationLock).toBe('portrait');
+
+      // Reset so the leaked config doesn't affect later tests (init merges
+      // config and destroy() keeps it).
+      manager.destroy();
+      manager.init({ lockPortrait: false });
     });
   });
 
