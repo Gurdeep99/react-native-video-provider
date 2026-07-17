@@ -177,7 +177,8 @@ Subscribes for the component lifetime; inline handlers are fine.
 ```ts
 interface VideoSource {
   id: string;            // identity used for same-video handoff
-  uri: string;
+  uri: string;           // stream/file URL, OR a YouTube video id when type==='youtube'
+  type?: 'url' | 'youtube'; // default 'url' (native engine); 'youtube' → WebView
   headers?: Record<string, string>;
   title?: string;
   artist?: string;

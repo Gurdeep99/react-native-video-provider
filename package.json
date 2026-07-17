@@ -1,6 +1,6 @@
 {
   "name": "react-native-video-provider",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Singleton-engine video library for React Native (one native player, many surfaces)",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -87,7 +87,13 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-svg": ">=13.0.0"
+    "react-native-svg": ">=13.0.0",
+    "react-native-webview": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native-webview": {
+      "optional": true
+    }
   },
   "workspaces": [
     "example"

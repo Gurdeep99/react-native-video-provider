@@ -42,6 +42,8 @@ cd ios && pod install
 ```
 
 `react-native-svg` is a peer dependency (used by the built-in control icons).
+Add `react-native-webview` too **only if** you use YouTube sources
+(`npm install react-native-webview`) — it's an optional peer dependency.
 
 Requires the New Architecture. Works on React Native **0.79+** — the
 TurboModule spec uses direct codegen-type imports so it parses on 0.79's
@@ -74,6 +76,18 @@ import { VideoPlayer } from 'react-native-video-provider';
   style={{ aspectRatio: 16 / 9 }}
 />
 ```
+
+**Play a YouTube video** — same component, same state/events/commands. Just
+set `type: 'youtube'` and put the YouTube **video id** in `uri`:
+
+```tsx
+<VideoPlayer source={{ id: 'y1', uri: 'dQw4w9WgXcQ', type: 'youtube' }} style={{ aspectRatio: 16 / 9 }} />
+```
+
+YouTube plays in a WebView (IFrame API) with YouTube's own controls and native
+fullscreen/rotation; `usePlayback`, `useVideoEvents`, `play()/pause()/seek()`
+work the same. Native (`type: 'url'`, the default) and YouTube sources are
+interchangeable. Requires `react-native-webview`.
 
 **3. Open a detail screen with the same video** — because the `id` matches,
 the engine is untouched and playback continues from the exact frame:

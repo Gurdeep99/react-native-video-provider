@@ -223,6 +223,56 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('youtube routing', () => {
+    const youtube = (id: string): VideoSource => ({
+      id,
+      uri: 'ytVideoId',
+      type: 'youtube',
+    });
+
+    it('does not touch the native engine for youtube sources', () => {
+      manager.setSource(youtube('yt1'));
+      expect(native.setSource).not.toHaveBeenCalled();
+      expect(manager.store.getState().currentVideo?.type).toBe('youtube');
+      expect(manager.store.getState().status).toBe('loading');
+    });
+
+    it('routes commands to the registered youtube controller', () => {
+      const controller = {
+        videoId: 'ytVideoId',
+        play: jest.fn(),
+        pause: jest.fn(),
+        stop: jest.fn(),
+        seekTo: jest.fn(),
+        setRate: jest.fn(),
+        setVolume: jest.fn(),
+        setMuted: jest.fn(),
+        setRepeat: jest.fn(),
+      };
+      manager.setSource(youtube('yt1'), { autoplay: false });
+      manager.registerYouTube(controller);
+
+      manager.play();
+      expect(controller.play).toHaveBeenCalledTimes(1);
+      expect(native.play).not.toHaveBeenCalled();
+
+      manager.store.setState({ duration: 100 });
+      manager.seek(30);
+      expect(controller.seekTo).toHaveBeenLastCalledWith(30);
+      expect(native.seekTo).not.toHaveBeenCalled();
+    });
+
+    it('reports youtube state back into the store', () => {
+      manager.setSource(youtube('yt1'), { autoplay: false });
+      manager.ytLoad(120);
+      expect(manager.store.getState().duration).toBe(120);
+      expect(manager.store.getState().loading).toBe(false);
+
+      manager.ytStatus('playing');
+      expect(manager.store.getState().playing).toBe(true);
+    });
+  });
+
   describe('floating', () => {
     it('toggles floating mode and restores the inline surface', () => {
       manager.attach('feed');

@@ -10,7 +10,18 @@ export interface VideoSource {
    * reloads, rebuffers or resets position.
    */
   id: string;
+  /**
+   * The media. For `type: 'url'` (default) a stream/file URL
+   * (`https://…/video.m3u8`). For `type: 'youtube'` the YouTube **video id**
+   * (e.g. `'dQw4w9WgXcQ'`), played through the YouTube IFrame player.
+   */
   uri: string;
+  /**
+   * `'url'` (default) uses the native engine (ExoPlayer / AVPlayer).
+   * `'youtube'` uses a WebView + the YouTube IFrame API — required because
+   * YouTube can't be played through the native engine.
+   */
+  type?: 'url' | 'youtube';
   headers?: Record<string, string>;
   title?: string;
   artist?: string;

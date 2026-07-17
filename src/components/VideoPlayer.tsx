@@ -25,6 +25,7 @@ import type {
 } from '../types/video';
 import { VideoControls } from './VideoControls';
 import { VideoSurface } from './VideoSurface';
+import { YouTubeView } from './YouTubeView';
 
 export interface VideoPlayerProps extends ViewProps {
   source: VideoSource;
@@ -294,6 +295,28 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       onBuffer: (e) => onBuffering?.(e.buffering),
       onError,
     });
+
+    // YouTube plays in a WebView with its own player UI (controls + native
+    // fullscreen/rotation); it can't share the native surface or overlay
+    // controls.
+    if (source.type === 'youtube') {
+      return (
+        <View style={[styles.container, style]} {...rest}>
+          <YouTubeView
+            videoId={source.uri}
+            autoplay={autoplay}
+            muted={muted}
+            repeat={repeat}
+            style={styles.surface}
+          />
+          {thumbnail && loading ? (
+            <View style={styles.surface} pointerEvents="none">
+              {thumbnail()}
+            </View>
+          ) : null}
+        </View>
+      );
+    }
 
     return (
       <View style={[styles.container, style]} {...rest}>

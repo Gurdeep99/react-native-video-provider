@@ -18,6 +18,7 @@ import type {
   VideoState,
 } from '../types/video';
 import { Emitter, type Listener, type Subscription } from '../utils/Emitter';
+import type { YouTubeController } from './YouTubeController';
 
 /** Surface id used by the built-in fullscreen host. */
 export const FULLSCREEN_SURFACE_ID = '__au_fullscreen__';
@@ -80,7 +81,15 @@ export class VideoManager {
   /** Per-player default for `enterFullscreen()` (VideoPlayer's prop). */
   private fullscreenOrientationDefault: OrientationLock | null = null;
 
+  /** The mounted YouTube WebView controller (when a youtube source is active). */
+  private youtube: YouTubeController | null = null;
+
   private constructor() {}
+
+  /** True when the current source plays through the YouTube WebView engine. */
+  private get isYouTube(): boolean {
+    return this.store.getState().currentVideo?.type === 'youtube';
+  }
 
   get providerConfig(): Required<VideoProviderConfig> {
     return this.config;
@@ -226,32 +235,50 @@ export class VideoManager {
         buffered: 0,
         error: null,
       });
-      NativeAuVideo.setSource(toNativeSource(source), autoplay);
+      if (source.type === 'youtube') {
+        // The mounted YouTubeView loads it and re-registers; the previous
+        // controller (a different video) is no longer ours.
+        this.youtube = null;
+      } else {
+        NativeAuVideo.setSource(toNativeSource(source), autoplay);
+      }
       this.events.emit('onVideoChanged', { video: source });
     } else if (autoplay && !this.store.getState().playing) {
       this.play();
     }
 
-    if (options?.surfaceId) {
+    // Surfaces are a native-engine concept; youtube renders its own WebView.
+    if (options?.surfaceId && source.type !== 'youtube') {
       this.attach(options.surfaceId);
     }
   }
 
   /** Warm a source without rendering or touching current playback. */
   preload(source: VideoSource): void {
+    if (source.type === 'youtube') {
+      return; // No-op for youtube.
+    }
     NativeAuVideo.preload(toNativeSource(source));
   }
 
   play(): void {
-    NativeAuVideo.play();
+    if (this.isYouTube) {
+      this.youtube?.play();
+    } else {
+      NativeAuVideo.play();
+    }
   }
 
   pause(): void {
-    NativeAuVideo.pause();
+    if (this.isYouTube) {
+      this.youtube?.pause();
+    } else {
+      NativeAuVideo.pause();
+    }
   }
 
   resume(): void {
-    NativeAuVideo.play();
+    this.play();
   }
 
   toggle(): void {
@@ -263,7 +290,11 @@ export class VideoManager {
   }
 
   stop(): void {
-    NativeAuVideo.stop();
+    if (this.isYouTube) {
+      this.youtube?.stop();
+    } else {
+      NativeAuVideo.stop();
+    }
     this.set({ position: 0, playing: false, status: 'idle' });
   }
 
@@ -275,7 +306,11 @@ export class VideoManager {
       duration > 0 ? Math.min(position, duration) : position
     );
     this.set({ position: clamped });
-    NativeAuVideo.seekTo(clamped);
+    if (this.isYouTube) {
+      this.youtube?.seekTo(clamped);
+    } else {
+      NativeAuVideo.seekTo(clamped);
+    }
   }
 
   seekBy(offset: number): void {
@@ -284,33 +319,55 @@ export class VideoManager {
 
   setRate(rate: number): void {
     this.set({ rate });
-    NativeAuVideo.setRate(rate);
+    if (this.isYouTube) {
+      this.youtube?.setRate(rate);
+    } else {
+      NativeAuVideo.setRate(rate);
+    }
   }
 
   setVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(volume, 1));
     this.set({ volume: clamped });
-    NativeAuVideo.setVolume(clamped);
+    if (this.isYouTube) {
+      this.youtube?.setVolume(clamped);
+    } else {
+      NativeAuVideo.setVolume(clamped);
+    }
   }
 
   mute(): void {
     this.set({ muted: true });
-    NativeAuVideo.setMuted(true);
+    if (this.isYouTube) {
+      this.youtube?.setMuted(true);
+    } else {
+      NativeAuVideo.setMuted(true);
+    }
   }
 
   unmute(): void {
     this.set({ muted: false });
-    NativeAuVideo.setMuted(false);
+    if (this.isYouTube) {
+      this.youtube?.setMuted(false);
+    } else {
+      NativeAuVideo.setMuted(false);
+    }
   }
 
   setRepeat(repeat: boolean): void {
     this.set({ repeat });
-    NativeAuVideo.setRepeat(repeat);
+    if (this.isYouTube) {
+      this.youtube?.setRepeat(repeat);
+    } else {
+      NativeAuVideo.setRepeat(repeat);
+    }
   }
 
   setResizeMode(mode: ResizeMode): void {
     this.set({ resizeMode: mode });
-    NativeAuVideo.setResizeMode(mode);
+    if (!this.isYouTube) {
+      NativeAuVideo.setResizeMode(mode);
+    }
   }
 
   /**
@@ -319,6 +376,68 @@ export class VideoManager {
    */
   setLive(live: boolean, liveIcon: LiveIconRenderer | null = null): void {
     this.set({ live, liveIcon: live ? liveIcon : null });
+  }
+
+  // ------------------------------------------------------- youtube bridge
+
+  /** Called by the mounted YouTubeView to receive playback commands. */
+  registerYouTube(controller: YouTubeController): void {
+    this.youtube = controller;
+    // Sync the desired state onto the freshly mounted player.
+    const s = this.store.getState();
+    controller.setMuted(s.muted);
+    controller.setRepeat(s.repeat);
+    if (s.rate !== 1) {
+      controller.setRate(s.rate);
+    }
+  }
+
+  /** Called by YouTubeView on unmount. */
+  unregisterYouTube(controller: YouTubeController): void {
+    if (this.youtube === controller) {
+      this.youtube = null;
+    }
+  }
+
+  /** @internal YouTubeView → metadata ready. */
+  ytLoad(duration: number, width = 0, height = 0): void {
+    this.set({
+      duration,
+      videoWidth: width,
+      videoHeight: height,
+      loading: false,
+    });
+    const id = this.store.getState().currentVideo?.id ?? '';
+    this.events.emit('onLoad', { videoId: id, duration, width, height });
+    this.events.emit('onReady', { videoId: id });
+  }
+
+  /** @internal YouTubeView → status change. */
+  ytStatus(status: PlaybackStatus): void {
+    this.applyStatus(status);
+  }
+
+  /** @internal YouTubeView → progress tick. */
+  ytProgress(position: number, duration: number): void {
+    this.set({ position, duration, buffered: duration });
+    this.events.emit('onProgress', { position, duration, buffered: duration });
+  }
+
+  /** @internal YouTubeView → playback ended. */
+  ytEnded(): void {
+    this.applyStatus('ended');
+    this.events.emit('onEnd', undefined);
+  }
+
+  /** @internal YouTubeView → error. */
+  ytError(code: string, message: string): void {
+    this.set({
+      error: { code, message },
+      status: 'error',
+      playing: false,
+      loading: false,
+    });
+    this.events.emit('onError', { code, message });
   }
 
   /**
@@ -342,6 +461,9 @@ export class VideoManager {
   }
 
   async getPosition(): Promise<number> {
+    if (this.isYouTube) {
+      return this.store.getState().position;
+    }
     return NativeAuVideo.getPosition();
   }
 
