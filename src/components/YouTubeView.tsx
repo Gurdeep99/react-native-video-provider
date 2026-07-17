@@ -178,7 +178,14 @@ export function YouTubeView({
             iv_load_policy: 3,
             start: startRef.current,
           }}
-          webViewProps={{ androidLayerType: 'hardware' }}
+          // Real https referrer/origin — avoids embed rejections (e.g. 153)
+          // on referrer-restricted videos.
+          baseUrlOverride="https://www.youtube.com"
+          webViewProps={{
+            androidLayerType: 'hardware',
+            allowsInlineMediaPlayback: true,
+            mediaPlaybackRequiresUserAction: false,
+          }}
           onReady={onReady}
           onChangeState={onChangeState}
           onError={onError}
