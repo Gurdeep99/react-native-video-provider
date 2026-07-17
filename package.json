@@ -1,6 +1,6 @@
 {
   "name": "react-native-video-provider",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Singleton-engine video library for React Native (one native player, many surfaces)",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
