@@ -7917,6 +7917,10 @@ __metadata:
     react: "*"
     react-native: "*"
     react-native-svg: ">=13.0.0"
+    react-native-webview: ">=13.0.0"
+  peerDependenciesMeta:
+    react-native-webview:
+      optional: true
   languageName: unknown
   linkType: soft
 
