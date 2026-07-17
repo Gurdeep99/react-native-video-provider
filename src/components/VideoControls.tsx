@@ -205,8 +205,8 @@ const styles = StyleSheet.create({
   },
   liveBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 5,
+    left: 5,
     zIndex: 10,
     elevation: 10,
   },
