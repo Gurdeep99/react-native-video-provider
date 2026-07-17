@@ -88,10 +88,14 @@
     "react": "*",
     "react-native": "*",
     "react-native-svg": ">=13.0.0",
-    "react-native-webview": ">=13.0.0"
+    "react-native-webview": ">=13.0.0",
+    "react-native-youtube-iframe": ">=2.0.0"
   },
   "peerDependenciesMeta": {
     "react-native-webview": {
+      "optional": true
+    },
+    "react-native-youtube-iframe": {
       "optional": true
     }
   },
