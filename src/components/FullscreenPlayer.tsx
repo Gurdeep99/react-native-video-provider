@@ -13,6 +13,7 @@ import { useVideoManager } from '../provider/VideoContext';
 import type { OrientationLock } from '../types/video';
 import { VideoControls } from './VideoControls';
 import { VideoSurface } from './VideoSurface';
+import { YouTubeView } from './YouTubeView';
 
 type ModalOrientation =
   | 'portrait'
@@ -59,8 +60,7 @@ export function FullscreenPlayer() {
   const manager = useVideoManager();
   const fullscreen = usePlayback((s) => s.fullscreen);
   const fullscreenLock = usePlayback((s) => s.fullscreenLock);
-  // YouTube handles its own fullscreen inside the WebView (native controls).
-  const isYouTube = usePlayback((s) => s.currentVideo?.type === 'youtube');
+  const currentVideo = usePlayback((s) => s.currentVideo);
 
   // Android hardware back exits fullscreen (the iOS Modal handles its own).
   useEffect(() => {
@@ -74,18 +74,32 @@ export function FullscreenPlayer() {
     return () => sub.remove();
   }, [manager, fullscreen]);
 
-  if (!fullscreen || isYouTube) {
+  if (!fullscreen) {
     return null;
   }
+
+  const isYouTube = currentVideo?.type === 'youtube';
+  const media = isYouTube ? (
+    <YouTubeView
+      videoId={currentVideo!.uri}
+      autoplay
+      muted={manager.store.getState().muted}
+      repeat={manager.store.getState().repeat}
+      startSeconds={manager.store.getState().position}
+      style={styles.surface}
+    />
+  ) : (
+    <VideoSurface
+      surfaceId={FULLSCREEN_SURFACE_ID}
+      autoAttach
+      style={styles.surface}
+    />
+  );
 
   const content = (
     <>
       <StatusBar hidden />
-      <VideoSurface
-        surfaceId={FULLSCREEN_SURFACE_ID}
-        autoAttach
-        style={styles.surface}
-      />
+      {media}
       <VideoControls onClose={() => manager.exitFullscreen()} />
     </>
   );

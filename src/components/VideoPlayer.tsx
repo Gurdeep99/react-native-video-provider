@@ -152,6 +152,8 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     // Poster is shown only during the initial load — `loading` is true from
     // setSource until onLoad, and stays false for mid-stream buffering.
     const loading = usePlayback((s) => s.loading);
+    // For youtube: the inline WebView hands off to the fullscreen host.
+    const fullscreen = usePlayback((s) => s.fullscreen);
 
     // Read the latest source without retriggering effects on every render
     // (source is usually a fresh object literal each render).
@@ -296,19 +298,27 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       onError,
     });
 
-    // YouTube plays in a WebView with its own player UI (controls + native
-    // fullscreen/rotation); it can't share the native surface or overlay
-    // controls.
+    // YouTube plays in a WebView with our own <VideoControls> overlay
+    // (controls: 0 in the iframe). It can't re-parent its WebView, so
+    // fullscreen hands off to the fullscreen host: the inline view unmounts
+    // while fullscreen (avoiding double audio), resuming at the current
+    // position on either transition.
     if (source.type === 'youtube') {
       return (
         <View style={[styles.container, style]} {...rest}>
-          <YouTubeView
-            videoId={source.uri}
-            autoplay={autoplay}
-            muted={muted}
-            repeat={repeat}
-            style={styles.surface}
-          />
+          {!fullscreen ? (
+            <>
+              <YouTubeView
+                videoId={source.uri}
+                autoplay={autoplay}
+                muted={muted}
+                repeat={repeat}
+                startSeconds={manager.store.getState().position}
+                style={styles.surface}
+              />
+              {controls ? <VideoControls /> : null}
+            </>
+          ) : null}
           {thumbnail && loading ? (
             <View style={styles.surface} pointerEvents="none">
               {thumbnail()}

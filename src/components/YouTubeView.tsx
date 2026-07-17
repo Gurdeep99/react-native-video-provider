@@ -23,6 +23,8 @@ export interface YouTubeViewProps extends ViewProps {
   autoplay?: boolean;
   muted?: boolean;
   repeat?: boolean;
+  /** Start position in seconds (captured at mount — used to resume). */
+  startSeconds?: number;
 }
 
 /**
@@ -37,6 +39,7 @@ export function YouTubeView({
   autoplay = true,
   muted = false,
   repeat = false,
+  startSeconds = 0,
   style,
   ...rest
 }: YouTubeViewProps) {
@@ -44,9 +47,12 @@ export function YouTubeView({
   const ref = useRef<{ injectJavaScript: (js: string) => void } | null>(null);
   const repeatRef = useRef(repeat);
   repeatRef.current = repeat;
+  // Captured once at mount so a live position prop can't rebuild the HTML
+  // (which would reload the WebView).
+  const startRef = useRef(Math.floor(startSeconds));
 
   const html = useMemo(
-    () => buildHtml(videoId, autoplay, muted),
+    () => buildHtml(videoId, autoplay, muted, startRef.current),
     [videoId, autoplay, muted]
   );
 
@@ -133,26 +139,43 @@ export function YouTubeView({
     <View style={[styles.container, style]} {...rest}>
       <WebView
         ref={ref}
-        source={{ html }}
+        // baseUrl gives the page a real https origin — the YouTube IFrame API
+        // rejects about:blank (null origin) with a config error.
+        source={{ html, baseUrl: 'https://www.youtube.com' }}
         style={styles.web}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
         allowsInlineMediaPlayback
-        allowsFullscreenVideo
+        allowsFullscreenVideo={false}
         mediaPlaybackRequiresUserAction={false}
+        mixedContentMode="always"
+        androidLayerType="hardware"
+        setSupportMultipleWindows={false}
+        scalesPageToFit={false}
+        scrollEnabled={false}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         onMessage={onMessage}
-        // The IFrame API must load over http(s), not about:blank.
-        baseUrl="https://www.youtube.com"
       />
     </View>
   );
 }
 
-function buildHtml(videoId: string, autoplay: boolean, muted: boolean): string {
+function buildHtml(
+  videoId: string,
+  autoplay: boolean,
+  muted: boolean,
+  start: number
+): string {
+  // controls:0 → hide YouTube's own UI; the app draws <VideoControls>.
+  // origin/enablejsapi are required for the IFrame API to accept commands.
   return `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}#p{width:100%;height:100%}</style>
+<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}#p{width:100%;height:100%}
+/* Swallow taps on the iframe so <VideoControls> gestures win. */
+#p iframe{pointer-events:none}</style>
 </head><body>
 <div id="p"></div>
 <script>
@@ -163,7 +186,8 @@ document.body.appendChild(tag);
 function onYouTubeIframeAPIReady(){
   player=new YT.Player('p',{
     videoId:'${videoId}',
-    playerVars:{autoplay:${autoplay ? 1 : 0},controls:1,playsinline:1,rel:0,modestbranding:1,fs:1,mute:${muted ? 1 : 0}},
+    host:'https://www.youtube.com',
+    playerVars:{autoplay:${autoplay ? 1 : 0},controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,origin:'https://www.youtube.com',start:${start},mute:${muted ? 1 : 0}},
     events:{
       onReady:function(){post({type:'ready',duration:player.getDuration()});},
       onStateChange:function(e){post({type:'state',state:e.data});},

@@ -84,10 +84,16 @@ set `type: 'youtube'` and put the YouTube **video id** in `uri`:
 <VideoPlayer source={{ id: 'y1', uri: 'dQw4w9WgXcQ', type: 'youtube' }} style={{ aspectRatio: 16 / 9 }} />
 ```
 
-YouTube plays in a WebView (IFrame API) with YouTube's own controls and native
-fullscreen/rotation; `usePlayback`, `useVideoEvents`, `play()/pause()/seek()`
-work the same. Native (`type: 'url'`, the default) and YouTube sources are
-interchangeable. Requires `react-native-webview`.
+YouTube plays in a WebView (IFrame API) but uses the **same built-in
+`VideoControls`** (YouTube's own UI is hidden) and the same fullscreen host —
+so it looks and behaves like a native source. `usePlayback`, `useVideoEvents`,
+`play()/pause()/seek()` all work the same. Native (`type: 'url'`, the default)
+and YouTube sources are interchangeable. Requires `react-native-webview`.
+
+> YouTube can't re-parent its WebView the way the native engine re-parents its
+> view, so entering/exiting fullscreen re-creates the WebView (it resumes at
+> the current position). Cross-surface handoff (feed → detail) reloads for
+> YouTube; native video stays seamless.
 
 **3. Open a detail screen with the same video** — because the `id` matches,
 the engine is untouched and playback continues from the exact frame:
