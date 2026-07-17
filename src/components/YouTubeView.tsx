@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  type LayoutChangeEvent,
-  type ViewProps,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 import { useVideoManager } from '../provider/VideoContext';
 import type { YouTubeController } from '../core/YouTubeController';
 
 // Optional peer dependency: only required when a `type: 'youtube'` source is
-// actually rendered, so apps that never use YouTube needn't install it (it
-// pulls in react-native-webview). It handles the embed referrer/origin setup
-// that a hand-rolled iframe gets wrong (e.g. "Error 153").
-let YoutubePlayer: any;
+// actually rendered, so apps that never use YouTube needn't install it.
+let WebView: any;
 try {
-  YoutubePlayer = require('react-native-youtube-iframe').default;
+  WebView = require('react-native-webview').WebView;
 } catch {
-  YoutubePlayer = null;
+  WebView = null;
+}
+
+interface WebViewMessage {
+  nativeEvent: { data: string };
 }
 
 export interface YouTubeViewProps extends ViewProps {
@@ -25,172 +21,158 @@ export interface YouTubeViewProps extends ViewProps {
   videoId: string;
   autoplay?: boolean;
   muted?: boolean;
-  repeat?: boolean;
-  /** Start position in seconds (captured at mount — used to resume). */
+  /** Start position in seconds. */
   startSeconds?: number;
 }
 
+// Bridges the embed's IFrame-API events to React Native and forwards a
+// "listening" handshake so the player starts delivering them.
+const INJECTED = `(function(){
+  function send(d){try{window.ReactNativeWebView.postMessage(typeof d==='string'?d:JSON.stringify(d));}catch(e){}}
+  window.addEventListener('message',function(e){send(e.data);});
+  document.addEventListener('message',function(e){send(e.data);});
+  function listen(){try{window.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*');}catch(e){}}
+  listen();setTimeout(listen,800);setTimeout(listen,2000);
+})();true;`;
+
 /**
- * Plays a YouTube video via `react-native-youtube-iframe`, bridged to the
- * shared VideoManager so `usePlayback`, events and the command API work the
- * same as native sources. YouTube's own UI is hidden (`controls: false`) — the
- * app draws `<VideoControls>` on top, like a native source.
+ * Plays a YouTube video in a WebView using the embed URL + a `Referer`
+ * header (the config that satisfies referrer-restricted embeds — the same one
+ * that works in production apps). YouTube's own controls and native fullscreen
+ * are used. Playback state is bridged back to the shared VideoManager on a
+ * best-effort basis so `usePlayback`/events still update; explicit commands
+ * (`play()/pause()/seek()`) are forwarded to the player when possible.
  */
 export function YouTubeView({
   videoId,
   autoplay = true,
   muted = false,
-  repeat = false,
   startSeconds = 0,
   style,
   ...rest
 }: YouTubeViewProps) {
   const manager = useVideoManager();
-  const ref = useRef<{
-    seekTo: (s: number, allowAhead: boolean) => void;
-    getDuration: () => Promise<number>;
-    getCurrentTime: () => Promise<number>;
-  } | null>(null);
+  const ref = useRef<{ injectJavaScript: (js: string) => void } | null>(null);
 
-  // Desired (controlled) state — driven by the manager via the controller.
-  const [playing, setPlaying] = useState(autoplay);
-  const [isMuted, setIsMuted] = useState(muted);
-  const [rate, setRate] = useState(1);
-  const [volume, setVolume] = useState(100);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  const repeatRef = useRef(repeat);
-  repeatRef.current = repeat;
-  const startRef = useRef(Math.floor(startSeconds));
+  const cmd = useCallback((func: string, args: unknown[] = []) => {
+    ref.current?.injectJavaScript(
+      `try{window.postMessage(JSON.stringify({event:'command',func:'${func}',args:${JSON.stringify(
+        args
+      )}}),'*');}catch(e){};true;`
+    );
+  }, []);
 
   useEffect(() => {
     const controller: YouTubeController = {
       videoId,
-      play: () => setPlaying(true),
-      pause: () => setPlaying(false),
+      play: () => cmd('playVideo'),
+      pause: () => cmd('pauseVideo'),
       stop: () => {
-        setPlaying(false);
-        ref.current?.seekTo(0, true);
+        cmd('pauseVideo');
+        cmd('seekTo', [0, true]);
       },
-      seekTo: (s) => ref.current?.seekTo(s, true),
-      setRate: (r) => setRate(r),
-      setVolume: (v) => setVolume(Math.round(v * 100)),
-      setMuted: (m) => setIsMuted(m),
-      setRepeat: () => {}, // handled on the 'ended' state via repeatRef
+      seekTo: (s) => cmd('seekTo', [s, true]),
+      setRate: (r) => cmd('setPlaybackRate', [r]),
+      setVolume: (v) => cmd('setVolume', [Math.round(v * 100)]),
+      setMuted: (m) => cmd(m ? 'mute' : 'unMute'),
+      setRepeat: () => {},
     };
     manager.registerYouTube(controller);
     return () => manager.unregisterYouTube(controller);
-  }, [manager, videoId]);
+  }, [manager, videoId, cmd]);
 
-  // Progress ticker (the library is imperative for time).
-  useEffect(() => {
-    const timer = setInterval(async () => {
-      const p = ref.current;
-      if (!p) {
-        return;
-      }
-      try {
-        const [position, duration] = await Promise.all([
-          p.getCurrentTime(),
-          p.getDuration(),
-        ]);
-        manager.ytProgress(position || 0, duration || 0);
-      } catch {
-        // player not ready yet
-      }
-    }, 500);
-    return () => clearInterval(timer);
-  }, [manager]);
+  const source = useMemo(
+    () => ({
+      uri:
+        `https://www.youtube.com/embed/${videoId}` +
+        `?enablejsapi=1&autoplay=${autoplay ? 1 : 0}&mute=${muted ? 1 : 0}` +
+        `&controls=1&playsinline=1&fs=1&rel=0&modestbranding=1&iv_load_policy=3` +
+        `&start=${Math.floor(startSeconds)}`,
+      headers: { Referer: 'https://youtube.com' },
+    }),
+    [videoId, autoplay, muted, startSeconds]
+  );
 
-  const onReady = useCallback(async () => {
-    let duration = 0;
+  const onMessage = (e: WebViewMessage) => {
+    let m: { event?: string; info?: unknown };
     try {
-      duration = (await ref.current?.getDuration()) ?? 0;
+      m = JSON.parse(e.nativeEvent.data);
     } catch {
-      // ignore
+      return;
     }
-    manager.ytLoad(duration);
-  }, [manager]);
-
-  const onChangeState = useCallback(
-    (state: string) => {
-      switch (state) {
-        case 'playing':
-          manager.ytStatus('playing');
-          break;
-        case 'paused':
-          manager.ytStatus('paused');
-          break;
-        case 'buffering':
-          manager.ytStatus('buffering');
-          break;
-        case 'ended':
-          if (repeatRef.current) {
-            ref.current?.seekTo(0, true);
-            setPlaying(true);
-          } else {
-            manager.ytEnded();
-          }
-          break;
+    if (!m || !m.event) {
+      return;
+    }
+    const info = m.info as
+      | { playerState?: number; currentTime?: number; duration?: number }
+      | number
+      | undefined;
+    if (m.event === 'onReady' || m.event === 'initialDelivery') {
+      const duration =
+        typeof info === 'object' ? Number(info?.duration) || 0 : 0;
+      manager.ytLoad(duration);
+    } else if (m.event === 'onStateChange' || m.event === 'infoDelivery') {
+      const state = typeof info === 'number' ? info : info?.playerState;
+      if (state === 1) {
+        manager.ytStatus('playing');
+      } else if (state === 2) {
+        manager.ytStatus('paused');
+      } else if (state === 3) {
+        manager.ytStatus('buffering');
+      } else if (state === 0) {
+        manager.ytEnded();
       }
-    },
-    [manager]
-  );
+      if (typeof info === 'object' && info?.currentTime != null) {
+        manager.ytProgress(
+          Number(info.currentTime) || 0,
+          Number(info.duration) || 0
+        );
+      }
+    } else if (m.event === 'onError') {
+      manager.ytError('youtube', String(m.info));
+    }
+  };
 
-  const onError = useCallback(
-    (code: string) => manager.ytError('youtube', code),
-    [manager]
-  );
+  const onLoadEnd = () => {
+    // Clear the loading poster even if the event bridge stays quiet.
+    if (manager.store.getState().loading) {
+      manager.ytLoad(manager.store.getState().duration || 0);
+    }
+  };
 
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    setSize({ width, height });
-  }, []);
-
-  if (!YoutubePlayer) {
+  if (!WebView) {
     return (
       <View style={[styles.fallback, style]} {...rest}>
         <Text style={styles.fallbackText}>
-          react-native-youtube-iframe is required for YouTube sources. Install
-          it:{'\n'}npm install react-native-youtube-iframe react-native-webview
+          react-native-webview is required for YouTube sources. Install it:
+          {'\n'}npm install react-native-webview
         </Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, style]} onLayout={onLayout} {...rest}>
-      {size.width > 0 ? (
-        <YoutubePlayer
-          ref={ref}
-          height={size.height}
-          width={size.width}
-          play={playing}
-          mute={isMuted}
-          volume={volume}
-          playbackRate={rate}
-          videoId={videoId}
-          initialPlayerParams={{
-            controls: false,
-            modestbranding: true,
-            rel: false,
-            preventFullScreen: true,
-            iv_load_policy: 3,
-            start: startRef.current,
-          }}
-          // Real https referrer/origin — avoids embed rejections (e.g. 153)
-          // on referrer-restricted videos.
-          baseUrlOverride="https://www.youtube.com"
-          webViewProps={{
-            androidLayerType: 'hardware',
-            allowsInlineMediaPlayback: true,
-            mediaPlaybackRequiresUserAction: false,
-          }}
-          onReady={onReady}
-          onChangeState={onChangeState}
-          onError={onError}
-        />
-      ) : null}
+    <View style={[styles.container, style]} {...rest}>
+      <WebView
+        ref={ref}
+        source={source}
+        style={styles.web}
+        originWhitelist={['*']}
+        javaScriptEnabled
+        domStorageEnabled
+        allowsInlineMediaPlayback
+        allowsFullscreenVideo
+        mediaPlaybackRequiresUserAction={false}
+        androidLayerType="hardware"
+        scalesPageToFit={false}
+        scrollEnabled={false}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        injectedJavaScript={INJECTED}
+        onMessage={onMessage}
+        onLoadEnd={onLoadEnd}
+      />
     </View>
   );
 }
@@ -199,6 +181,10 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#000',
     overflow: 'hidden',
+  },
+  web: {
+    flex: 1,
+    backgroundColor: '#000',
   },
   fallback: {
     backgroundColor: '#000',

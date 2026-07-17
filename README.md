@@ -42,9 +42,9 @@ cd ios && pod install
 ```
 
 `react-native-svg` is a peer dependency (used by the built-in control icons).
-For YouTube sources add **`react-native-youtube-iframe` + `react-native-webview`**
-(`npm install react-native-youtube-iframe react-native-webview`) — optional
-peer dependencies, only needed if you use `type: 'youtube'`.
+For YouTube sources add **`react-native-webview`**
+(`npm install react-native-webview`) — an optional peer dependency, only
+needed if you use `type: 'youtube'`.
 
 Requires the New Architecture. Works on React Native **0.79+** — the
 TurboModule spec uses direct codegen-type imports so it parses on 0.79's
@@ -85,17 +85,17 @@ set `type: 'youtube'` and put the YouTube **video id** in `uri`:
 <VideoPlayer source={{ id: 'y1', uri: 'dQw4w9WgXcQ', type: 'youtube' }} style={{ aspectRatio: 16 / 9 }} />
 ```
 
-YouTube plays in a WebView (IFrame API) but uses the **same built-in
-`VideoControls`** (YouTube's own UI is hidden) and the same fullscreen host —
-so it looks and behaves like a native source. `usePlayback`, `useVideoEvents`,
-`play()/pause()/seek()` all work the same. Native (`type: 'url'`, the default)
-and YouTube sources are interchangeable. Requires `react-native-youtube-iframe`
-+ `react-native-webview`.
+YouTube plays in a WebView (embed URL + `Referer` header — the config that
+reliably plays referrer-restricted videos) using **YouTube's own controls and
+native fullscreen**. Playback state is still bridged to `usePlayback` /
+`useVideoEvents`, and `play()/pause()/seek()` are forwarded to the player, so
+it fits the same API. Native (`type: 'url'`, the default) and YouTube sources
+are interchangeable. Requires `react-native-webview`.
 
-> YouTube can't re-parent its WebView the way the native engine re-parents its
-> view, so entering/exiting fullscreen re-creates the WebView (it resumes at
-> the current position). Cross-surface handoff (feed → detail) reloads for
-> YouTube; native video stays seamless.
+> YouTube uses its own player UI (not the built-in `VideoControls`) and its own
+> fullscreen — a WebView can't be re-parented like the native engine, and the
+> embed's referrer restriction requires loading it directly. Native video
+> keeps the custom controls, seamless handoff and library fullscreen.
 
 **3. Open a detail screen with the same video** — because the `id` matches,
 the engine is untouched and playback continues from the exact frame:
