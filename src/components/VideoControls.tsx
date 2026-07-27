@@ -45,10 +45,18 @@ export function VideoControls({
   const loading = usePlayback((s) => s.loading);
   const position = usePlayback((s) => s.position);
   const duration = usePlayback((s) => s.duration);
+  const buffered = usePlayback((s) => s.buffered);
   const muted = usePlayback((s) => s.muted);
   const fullscreen = usePlayback((s) => s.fullscreen);
   const live = usePlayback((s) => s.live);
   const liveIcon = usePlayback((s) => s.liveIcon);
+
+  // Once a live feed starts arriving (playing, or buffer/position advancing),
+  // drop the initial loader even if the engine still reports `loading`.
+  const feedArriving = playing || buffered > 0 || position > 0;
+  const showLoader = live
+    ? (loading || buffering) && !feedArriving
+    : loading || buffering;
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -139,9 +147,9 @@ export function VideoControls({
             {!live ? muteButton : <View />}
           </View>
 
-          {/* Center play/pause — hidden while loading/buffering (the loader
-              shows) and hidden entirely for live (only the loader appears). */}
-          {live || buffering || loading ? (
+          {/* Center play/pause — hidden while the loader shows and hidden
+              entirely for live (only the loader appears). */}
+          {live || showLoader ? (
             <View />
           ) : (
             <Pressable
@@ -188,8 +196,9 @@ export function VideoControls({
         </View>
       ) : null}
       {/* Center loader — shown during initial load / buffering regardless of
-          whether the chrome is visible (the only center element for live). */}
-      {buffering || loading ? (
+          whether the chrome is visible (the only center element for live). For
+          live it disappears as soon as the feed starts arriving. */}
+      {showLoader ? (
         <View style={styles.centerLoader} pointerEvents="none">
           <ActivityIndicator size="large" color="#fff" />
         </View>
@@ -198,7 +207,10 @@ export function VideoControls({
           it does NOT hide with the auto-hiding chrome (rendered last + high
           zIndex so it stays on top). */}
       {live && liveIcon ? (
-        <View style={styles.liveBadge} pointerEvents="none">
+        <View
+          style={[styles.liveBadge, fullscreen && styles.liveBadgeFullscreen]}
+          pointerEvents="none"
+        >
           {liveIcon()}
         </View>
       ) : null}
@@ -231,6 +243,12 @@ const styles = StyleSheet.create({
     left: 10,
     zIndex: 10,
     elevation: 10,
+  },
+  // Extra inset in fullscreen so the badge clears the status-bar / landscape
+  // notch area.
+  liveBadgeFullscreen: {
+    top: 20,
+    left: 44,
   },
   topRow: {
     flexDirection: 'row',
