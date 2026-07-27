@@ -100,6 +100,8 @@ export interface VideoState {
   surfaceId: string | null;
   videoWidth: number;
   videoHeight: number;
+  /** Network reachability (requires @react-native-community/netinfo; else true). */
+  online: boolean;
   error: VideoError | null;
 }
 
@@ -129,4 +131,11 @@ export interface VideoProviderConfig {
    * On iOS this needs the AppDelegate forwarding to `AuVideoOrientation`.
    */
   lockPortrait?: boolean;
+  /**
+   * Auto-retry a LIVE source when its feed errors or drops, with backoff.
+   * Retries pause while offline and resume on reconnect (needs
+   * `@react-native-community/netinfo` for connectivity; otherwise assumes
+   * online). Default true.
+   */
+  liveAutoRetry?: boolean;
 }

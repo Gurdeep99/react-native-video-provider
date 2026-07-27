@@ -20,6 +20,21 @@ import type {
 import { Emitter, type Listener, type Subscription } from '../utils/Emitter';
 import type { YouTubeController } from './YouTubeController';
 
+// Optional: connectivity gating for live retry. If not installed, retries
+// assume the network is up (they'll just fail fast and back off).
+let NetInfo: {
+  addEventListener: (
+    cb: (s: { isConnected?: boolean; isInternetReachable?: boolean }) => void
+  ) => () => void;
+} | null = null;
+try {
+  NetInfo = require('@react-native-community/netinfo').default;
+} catch {
+  NetInfo = null;
+}
+
+const LIVE_RETRY_MAX_DELAY_MS = 15000;
+
 /** Surface id used by the built-in fullscreen host. */
 export const FULLSCREEN_SURFACE_ID = '__au_fullscreen__';
 /** Surface id used by the built-in floating host. */
@@ -74,6 +89,7 @@ export class VideoManager {
     floatingHost: true,
     pauseOnDetach: false,
     lockPortrait: false,
+    liveAutoRetry: true,
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
@@ -83,6 +99,14 @@ export class VideoManager {
 
   /** The mounted YouTube WebView controller (when a youtube source is active). */
   private youtube: YouTubeController | null = null;
+
+  // --- live retry / connectivity ---
+  private online = true;
+  private netUnsub: (() => void) | null = null;
+  private liveRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private liveRetryAttempt = 0;
+  /** A live retry deferred because the device is offline. */
+  private pendingLiveRetry = false;
 
   private constructor() {}
 
@@ -107,9 +131,36 @@ export class VideoManager {
     this.initialized = true;
     NativeAuVideo.nativeInit();
     this.subscribeNative();
+    this.setupNetInfo();
     if (this.config.lockPortrait) {
       // Keep the app portrait inline; fullscreen still rotates to landscape.
       this.setOrientation('portrait');
+    }
+  }
+
+  private setupNetInfo(): void {
+    if (!NetInfo) {
+      this.online = true;
+      return;
+    }
+    try {
+      this.netUnsub = NetInfo.addEventListener(
+        (state: { isConnected?: boolean; isInternetReachable?: boolean }) => {
+          const online =
+            state?.isConnected !== false &&
+            state?.isInternetReachable !== false;
+          const cameOnline = online && !this.online;
+          this.online = online;
+          this.set({ online });
+          // Reconnected — run any live retry we deferred while offline.
+          if (cameOnline && this.pendingLiveRetry) {
+            this.pendingLiveRetry = false;
+            this.scheduleLiveRetry();
+          }
+        }
+      );
+    } catch {
+      this.online = true;
     }
   }
 
@@ -138,6 +189,8 @@ export class VideoManager {
           videoHeight: e.height,
           loading: false,
         });
+        // Feed came back — reset the retry backoff.
+        this.liveRetryAttempt = 0;
         this.events.emit('onLoad', e);
         this.events.emit('onReady', { videoId: e.videoId });
       })
@@ -162,12 +215,17 @@ export class VideoManager {
       NativeAuVideo.onEnd(() => {
         this.applyStatus('ended');
         this.events.emit('onEnd', undefined);
+        // A live stream shouldn't "end" — the feed dropped; try again.
+        if (this.store.getState().live) {
+          this.maybeRetryLive();
+        }
       })
     );
     subs.push(
       NativeAuVideo.onError((e) => {
         this.set({ error: e, status: 'error', playing: false, loading: false });
         this.events.emit('onError', e);
+        this.maybeRetryLive();
       })
     );
     subs.push(
@@ -226,6 +284,8 @@ export class VideoManager {
     const sameVideo = current?.id === source.id;
 
     if (!sameVideo) {
+      // A different video invalidates any in-flight live retry.
+      this.clearLiveRetry();
       this.set({
         currentVideo: source,
         status: 'loading',
@@ -290,6 +350,7 @@ export class VideoManager {
   }
 
   stop(): void {
+    this.clearLiveRetry();
     if (this.isYouTube) {
       this.youtube?.stop();
     } else {
@@ -376,6 +437,69 @@ export class VideoManager {
    */
   setLive(live: boolean, liveIcon: LiveIconRenderer | null = null): void {
     this.set({ live, liveIcon: live ? liveIcon : null });
+    if (!live) {
+      this.clearLiveRetry();
+    }
+  }
+
+  /** Re-attempt the current source (forces a reload even for the same id). */
+  reload(): void {
+    const v = this.store.getState().currentVideo;
+    if (!v) {
+      return;
+    }
+    this.set({ status: 'loading', loading: true, error: null });
+    if (v.type === 'youtube') {
+      // The YouTube WebView player handles its own reconnection.
+      return;
+    }
+    NativeAuVideo.setSource(toNativeSource(v), true);
+  }
+
+  // ------------------------------------------------------ live retry
+
+  /** Retry a failed/dropped LIVE feed — always, unless offline (waits) or
+   *  disabled via `liveAutoRetry: false`. */
+  private maybeRetryLive(): void {
+    if (!this.config.liveAutoRetry || !this.store.getState().live) {
+      return;
+    }
+    this.scheduleLiveRetry();
+  }
+
+  private scheduleLiveRetry(): void {
+    if (!this.store.getState().live || this.liveRetryTimer) {
+      return;
+    }
+    if (!this.online) {
+      // Don't hammer the network offline — resume when connectivity returns.
+      this.pendingLiveRetry = true;
+      return;
+    }
+    const delay = Math.min(
+      1000 * 2 ** this.liveRetryAttempt,
+      LIVE_RETRY_MAX_DELAY_MS
+    );
+    this.liveRetryAttempt += 1;
+    this.liveRetryTimer = setTimeout(() => {
+      this.liveRetryTimer = null;
+      if (!this.online) {
+        this.pendingLiveRetry = true;
+        return;
+      }
+      if (this.store.getState().live) {
+        this.reload();
+      }
+    }, delay);
+  }
+
+  private clearLiveRetry(): void {
+    if (this.liveRetryTimer) {
+      clearTimeout(this.liveRetryTimer);
+      this.liveRetryTimer = null;
+    }
+    this.liveRetryAttempt = 0;
+    this.pendingLiveRetry = false;
   }
 
   // ------------------------------------------------------- youtube bridge
@@ -622,10 +746,14 @@ export class VideoManager {
       sub.remove();
     }
     this.nativeSubscriptions = [];
+    this.clearLiveRetry();
+    this.netUnsub?.();
+    this.netUnsub = null;
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;
     this.fullscreenOrientationDefault = null;
+    this.youtube = null;
     NativeAuVideo.setOrientation('auto');
     NativeAuVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);

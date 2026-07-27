@@ -18,6 +18,7 @@ built-in fullscreen + floating hosts above the app.
 | `floatingHost` | `true` | Render the built-in draggable floating host |
 | `pauseOnDetach` | `false` | Pause when the active surface unmounts (default keeps audio running) |
 | `lockPortrait` | `false` | Lock the app portrait so the video never sensor-rotates inline — only fullscreen rotates to landscape (on tap). iOS needs the AppDelegate forwarding |
+| `liveAutoRetry` | `true` | Auto-retry a **live** source (marked with `live`) when its feed errors/drops, with backoff. Pauses while offline, resumes on reconnect (needs `@react-native-community/netinfo`) |
 
 ### `<VideoSurface surfaceId autoAttach? …ViewProps>`
 A dumb mount point. Registers its native view under `surfaceId`; the engine

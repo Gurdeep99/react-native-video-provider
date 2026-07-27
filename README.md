@@ -197,9 +197,13 @@ optional controls in one component. Handy props:
 />
 ```
 
-Pass `live` for a live stream: the controls hide the seek bar/times and show
-just mute + fullscreen. `liveIcon` renders a live indicator (e.g. a Lottie
-badge), and `thumbnail` shows a poster over the video during the initial load:
+Pass `live` for a live stream: the controls hide the seek bar/times and the
+center play/pause (only a loader shows), and a persistent `liveIcon` badge
+sits top-left. A live feed that errors or drops **auto-retries with backoff**,
+pausing while offline and resuming on reconnect (install
+`@react-native-community/netinfo` for connectivity; opt out with
+`<VideoProvider config={{ liveAutoRetry: false }}>`). `thumbnail` shows a
+poster over the video during the initial load:
 
 ```tsx
 <VideoPlayer

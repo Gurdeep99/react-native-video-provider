@@ -27,6 +27,7 @@ export const initialVideoState: VideoState = {
   surfaceId: null,
   videoWidth: 0,
   videoHeight: 0,
+  online: true,
   error: null,
 };
 

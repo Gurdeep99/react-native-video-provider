@@ -7914,11 +7914,14 @@ __metadata:
     typescript: "npm:^6.0.3"
     zustand: "npm:^5.0.0"
   peerDependencies:
+    "@react-native-community/netinfo": ">=9.0.0"
     react: "*"
     react-native: "*"
     react-native-svg: ">=13.0.0"
     react-native-webview: ">=13.0.0"
   peerDependenciesMeta:
+    "@react-native-community/netinfo":
+      optional: true
     react-native-webview:
       optional: true
   languageName: unknown

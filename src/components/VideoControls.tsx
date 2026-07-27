@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -41,6 +42,7 @@ export function VideoControls({
   const manager = useVideoManager();
   const playing = usePlayback((s) => s.playing);
   const buffering = usePlayback((s) => s.buffering);
+  const loading = usePlayback((s) => s.loading);
   const position = usePlayback((s) => s.position);
   const duration = usePlayback((s) => s.duration);
   const muted = usePlayback((s) => s.muted);
@@ -137,22 +139,26 @@ export function VideoControls({
             {!live ? muteButton : <View />}
           </View>
 
-          <Pressable
-            style={styles.playButton}
-            onPress={() => {
-              manager.toggle();
-              scheduleHide();
-            }}
-            hitSlop={16}
-          >
-            {buffering ? (
-              <Text style={styles.playIcon}>…</Text>
-            ) : playing ? (
-              <SvgIcons icon="playPause" type="pause" size={34} fill="#fff" />
-            ) : (
-              <SvgIcons icon="playPause" type="play" size={34} fill="#fff" />
-            )}
-          </Pressable>
+          {/* Center play/pause — hidden while loading/buffering (the loader
+              shows) and hidden entirely for live (only the loader appears). */}
+          {live || buffering || loading ? (
+            <View />
+          ) : (
+            <Pressable
+              style={styles.playButton}
+              onPress={() => {
+                manager.toggle();
+                scheduleHide();
+              }}
+              hitSlop={16}
+            >
+              {playing ? (
+                <SvgIcons icon="playPause" type="pause" size={34} fill="#fff" />
+              ) : (
+                <SvgIcons icon="playPause" type="play" size={34} fill="#fff" />
+              )}
+            </Pressable>
+          )}
 
           <View style={styles.bottomRow}>
             {live ? (
@@ -181,6 +187,13 @@ export function VideoControls({
           </View>
         </View>
       ) : null}
+      {/* Center loader — shown during initial load / buffering regardless of
+          whether the chrome is visible (the only center element for live). */}
+      {buffering || loading ? (
+        <View style={styles.centerLoader} pointerEvents="none">
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      ) : null}
       {/* Live badge: top-left, above the controls, always visible while live —
           it does NOT hide with the auto-hiding chrome (rendered last + high
           zIndex so it stays on top). */}
@@ -203,10 +216,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'space-between',
   },
+  centerLoader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   liveBadge: {
     position: 'absolute',
-    top: 5,
-    left: 5,
+    top: 10,
+    left: 10,
     zIndex: 10,
     elevation: 10,
   },

@@ -273,6 +273,52 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('live retry', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const fireError = () => {
+      const handler = native.onError.mock.calls.at(-1)?.[0] as (e: {
+        code: string;
+        message: string;
+      }) => void;
+      handler({ code: 'io', message: 'boom' });
+    };
+
+    it('retries a live source after a backoff when its feed errors', () => {
+      manager.setSource(video('live1'));
+      manager.setLive(true);
+      native.setSource.mockClear();
+
+      fireError();
+      expect(native.setSource).not.toHaveBeenCalled(); // not immediate
+
+      jest.advanceTimersByTime(1000);
+      expect(native.setSource).toHaveBeenCalledTimes(1); // reload
+      expect(manager.store.getState().status).toBe('loading');
+    });
+
+    it('does NOT retry a non-live source on error', () => {
+      manager.setSource(video('vod1'));
+      native.setSource.mockClear();
+
+      fireError();
+      jest.advanceTimersByTime(30000);
+      expect(native.setSource).not.toHaveBeenCalled();
+    });
+
+    it('stops retrying once the source is no longer live', () => {
+      manager.setSource(video('live1'));
+      manager.setLive(true);
+      native.setSource.mockClear();
+
+      fireError();
+      manager.setLive(false); // clears the scheduled retry
+      jest.advanceTimersByTime(30000);
+      expect(native.setSource).not.toHaveBeenCalled();
+    });
+  });
+
   describe('floating', () => {
     it('toggles floating mode and restores the inline surface', () => {
       manager.attach('feed');
