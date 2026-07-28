@@ -367,6 +367,47 @@ videoId changes
 replace media source.
 
 =========================================================
+YOUTUBE (DUAL ENGINE)  — IMPLEMENTED
+=========================================================
+
+The core supports TWO playback engines behind ONE surface registry:
+
+• ExoPlayer / AVPlayer   → source.type = "url"  (default; streams/files)
+• Native WebView         → source.type = "youtube"  (uri = YouTube video id)
+
+Do NOT use react-native-video OR react-native-webview OR any JS/third-party
+YouTube library for this. The YouTube engine is a NATIVE, singleton,
+re-parentable view:
+
+• Android → android.webkit.WebView
+• iOS     → WKWebView
+
+Same rules as the native player:
+
+• Created once, lives for the app lifetime.
+• Re-parented between surfaces (inline ↔ fullscreen ↔ floating) by moving the
+  WHOLE native view — never reloaded. The web page / playing video moves with
+  it, so switching to fullscreen keeps the exact same WebView reference and
+  playback position (no reload, no restart, no re-buffer).
+• attach()/detach() move whichever engine's view is active.
+
+Loading:
+
+• Runs the YouTube IFrame Player API with controls:0 (YouTube's own UI is
+  hidden — the library's <VideoControls> is used, same as native video).
+• Loaded with a youtube.com origin/referrer so referrer-restricted embeds
+  play (avoids the embed "configuration error" / Error 153).
+
+Bridge:
+
+• Native captures the IFrame API postMessage events and emits the SAME core
+  events (onStatusChange / onLoad / onProgress / onEnd / onError).
+• Commands (play/pause/seek/rate/volume/mute) are forwarded into the player
+  via evaluateJavascript / evaluateJavaScript.
+• So usePlayback, useVideoEvents and the useVideo() command API work
+  identically for url and youtube — the two source types are interchangeable.
+
+=========================================================
 PRELOAD
 =========================================================
 

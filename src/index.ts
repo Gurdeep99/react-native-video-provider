@@ -14,7 +14,6 @@ export {
   type VideoSurfaceProps,
 } from './components/VideoSurface';
 export { VideoPlayer, type VideoPlayerProps } from './components/VideoPlayer';
-export { YouTubeView, type YouTubeViewProps } from './components/YouTubeView';
 export {
   VideoFeed,
   feedSurfaceId,

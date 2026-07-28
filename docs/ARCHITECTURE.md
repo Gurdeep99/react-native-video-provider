@@ -1,6 +1,6 @@
 # Architecture
 
-`react-native-au-video` is built around one principle:
+`react-native-video-provider` is built around one principle:
 
 > **There is exactly ONE native playback engine per app. React components never own it — they only borrow a place to render it.**
 

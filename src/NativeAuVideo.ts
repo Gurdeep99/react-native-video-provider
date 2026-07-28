@@ -8,7 +8,10 @@ import type {
 
 export type NativeVideoSource = {
   id: string;
+  /** Stream/file URL for `url`; the YouTube video id for `youtube`. */
   uri: string;
+  /** 'url' (native ExoPlayer/AVPlayer) or 'youtube' (native WebView engine). */
+  type?: string;
   /** HTTP headers, string -> string */
   headers?: UnsafeObject;
   title?: string;

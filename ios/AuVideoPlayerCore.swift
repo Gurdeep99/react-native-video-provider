@@ -2,11 +2,14 @@ import AVFoundation
 import AVKit
 import Foundation
 import UIKit
+import WebKit
 
 @objc(AuVideoSourceSpec)
 public final class AuVideoSourceSpec: NSObject {
   @objc public let videoId: String
   @objc public let uri: String
+  /// "url" (AVPlayer) or "youtube" (WKWebView engine).
+  @objc public let type: String
   @objc public let headers: [String: String]
   @objc public let title: String?
   @objc public let artist: String?
@@ -16,6 +19,7 @@ public final class AuVideoSourceSpec: NSObject {
   @objc public init(
     videoId: String,
     uri: String,
+    type: String,
     headers: [String: String],
     title: String?,
     artist: String?,
@@ -24,6 +28,7 @@ public final class AuVideoSourceSpec: NSObject {
   ) {
     self.videoId = videoId
     self.uri = uri
+    self.type = type
     self.headers = headers
     self.title = title
     self.artist = artist
@@ -65,6 +70,27 @@ public final class AuVideoPlayerCore: NSObject {
 
   private let player = AVPlayer()
   private let hostView = AuVideoHostView()
+
+  // Second engine: a re-parentable WKWebView running the YouTube IFrame API.
+  private enum Engine { case exo, web }
+  private var engine: Engine = .exo
+  private var webPositionSec: Double = 0
+  private var webDurationSec: Double = 0
+  private var webView: WKWebView?
+
+  private func ensureWebView() -> WKWebView {
+    if let wv = webView { return wv }
+    let config = WKWebViewConfiguration()
+    config.allowsInlineMediaPlayback = true
+    config.mediaTypesRequiringUserActionForPlayback = []
+    config.userContentController.add(self, name: "AuBridge")
+    let wv = WKWebView(frame: .zero, configuration: config)
+    wv.scrollView.isScrollEnabled = false
+    wv.isOpaque = false
+    wv.backgroundColor = .black
+    webView = wv
+    return wv
+  }
 
   private var currentVideoId: String?
   private var currentSurfaceId: String?
@@ -148,6 +174,12 @@ public final class AuVideoPlayerCore: NSObject {
     NotificationCenter.default.removeObserver(self)
     detach()
     player.replaceCurrentItem(with: nil)
+    if let wv = webView {
+      wv.configuration.userContentController.removeScriptMessageHandler(forName: "AuBridge")
+      wv.loadHTMLString("", baseURL: nil)
+      webView = nil
+    }
+    engine = .exo
     pipController = nil
     currentVideoId = nil
     pendingSurfaceId = nil
@@ -159,6 +191,18 @@ public final class AuVideoPlayerCore: NSObject {
 
   @objc public func setSource(_ source: AuVideoSourceSpec, autoplay: Bool) {
     initialize()
+
+    if source.type == "youtube" {
+      setYouTube(source, autoplay: autoplay)
+      return
+    }
+
+    // Switching away from the WebView engine: pause + hide it.
+    if engine == .web {
+      webCmd("pauseVideo")
+      engine = .exo
+      reAttachActive()
+    }
 
     if source.videoId == currentVideoId {
       // Same-video handoff: never reload; at most honor autoplay.
@@ -233,9 +277,116 @@ public final class AuVideoPlayerCore: NSObject {
     }
   }
 
+  // ----------------------------------------------------------- youtube engine
+
+  private func setYouTube(_ source: AuVideoSourceSpec, autoplay: Bool) {
+    if engine == .exo { player.pause() }
+    engine = .web
+
+    if source.videoId == currentVideoId {
+      if autoplay { webCmd("playVideo") }
+      reAttachActive()
+      return
+    }
+
+    currentVideoId = source.videoId
+    loadReported = false
+    webPositionSec = 0
+    webDurationSec = 0
+    delegate?.onStatusChange("loading")
+
+    let wv = ensureWebView()
+    let html = youTubeHtml(
+      videoId: source.uri,
+      autoplay: autoplay,
+      start: Int(source.startPosition)
+    )
+    // baseURL gives the page a youtube.com origin/referrer — the embed rejects
+    // other referrers (Error 153). No `www` matches the referrer that works.
+    wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
+    reAttachActive()
+  }
+
+  /// Fire an IFrame-API command into the WebView (no-op unless WEB engine).
+  private func webCmd(_ fn: String, _ args: [Any] = []) {
+    guard engine == .web, let wv = webView else { return }
+    let encoded = args.map { a -> String in
+      if let s = a as? String { return "'\(s)'" }
+      if let b = a as? Bool { return b ? "true" : "false" }
+      return "\(a)"
+    }.joined(separator: ",")
+    wv.evaluateJavaScript("auCmd('\(fn)',[\(encoded)]);", completionHandler: nil)
+  }
+
+  /// Re-parent the active engine's view into the current surface (engine swap).
+  private func reAttachActive() {
+    guard let id = currentSurfaceId,
+          let container = AuVideoSurfaceRegistry.view(for: id) else { return }
+    attachTo(container, surfaceId: id)
+  }
+
+  private func handleWebMessage(_ data: String) {
+    guard let d = data.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+    else { return }
+    switch obj["type"] as? String {
+    case "ready":
+      webDurationSec = (obj["duration"] as? Double) ?? 0
+      if !loadReported {
+        loadReported = true
+        delegate?.onLoad(
+          currentVideoId ?? "", duration: webDurationSec, width: 0, height: 0)
+      }
+    case "state":
+      switch (obj["state"] as? Int) ?? -99 {
+      case 1: delegate?.onStatusChange("playing")
+      case 2: delegate?.onStatusChange("paused")
+      case 3: delegate?.onStatusChange("buffering")
+      case 0:
+        delegate?.onStatusChange("ended")
+        delegate?.onEnd()
+      default: break
+      }
+    case "time":
+      webPositionSec = (obj["position"] as? Double) ?? 0
+      webDurationSec = (obj["duration"] as? Double) ?? 0
+      delegate?.onProgress(
+        webPositionSec, duration: webDurationSec, buffered: webDurationSec)
+    case "error":
+      delegate?.onError("youtube", message: "\(obj["code"] ?? "")")
+    default:
+      break
+    }
+  }
+
+  private func youTubeHtml(videoId: String, autoplay: Bool, start: Int) -> String {
+    let auto = autoplay ? 1 : 0
+    return """
+    <!DOCTYPE html><html><head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}#p{width:100%;height:100%}#p iframe{pointer-events:none}</style>
+    </head><body><div id="p"></div>
+    <script>
+    var player;
+    function post(m){try{window.webkit.messageHandlers.AuBridge.postMessage(JSON.stringify(m));}catch(e){}}
+    window.auCmd=function(f,a){try{player&&player[f]&&player[f].apply(player,a);}catch(e){}};
+    var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
+    function onYouTubeIframeAPIReady(){
+      player=new YT.Player('p',{videoId:'\(videoId)',host:'https://www.youtube.com',
+        playerVars:{autoplay:\(auto),controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,start:\(start)},
+        events:{onReady:function(){post({type:'ready',duration:player.getDuration()});},
+          onStateChange:function(e){post({type:'state',state:e.data});},
+          onError:function(e){post({type:'error',code:e.data});}}});
+    }
+    setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',position:player.getCurrentTime(),duration:player.getDuration()});}},500);
+    </script></body></html>
+    """
+  }
+
   // ------------------------------------------------------------- commands
 
   @objc public func play() {
+    if engine == .web { webCmd("playVideo"); return }
     if player.currentItem == nil { return }
     player.play()
     if playbackRate != 1 {
@@ -244,16 +395,24 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func pause() {
+    if engine == .web { webCmd("pauseVideo"); return }
     player.pause()
   }
 
   @objc public func stop() {
+    if engine == .web {
+      webCmd("pauseVideo")
+      webCmd("seekTo", [0, true])
+      delegate?.onStatusChange("idle")
+      return
+    }
     player.pause()
     player.seek(to: .zero)
     delegate?.onStatusChange("idle")
   }
 
   @objc public func seek(to position: Double) {
+    if engine == .web { webCmd("seekTo", [position, true]); return }
     let target = CMTime(seconds: max(position, 0), preferredTimescale: 600)
     player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) {
       [weak self] _ in
@@ -262,6 +421,7 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func setRate(_ rate: Double) {
+    if engine == .web { webCmd("setPlaybackRate", [rate]); return }
     playbackRate = rate
     // Setting rate on a paused player starts playback; mirror ExoPlayer by
     // only applying immediately when already playing (play() re-applies it).
@@ -274,10 +434,15 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func setVolume(_ volume: Double) {
+    if engine == .web {
+      webCmd("setVolume", [Int(min(max(volume, 0), 1) * 100)])
+      return
+    }
     player.volume = Float(min(max(volume, 0), 1))
   }
 
   @objc public func setMuted(_ muted: Bool) {
+    if engine == .web { webCmd(muted ? "mute" : "unMute"); return }
     player.isMuted = muted
   }
 
@@ -297,6 +462,7 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func positionSeconds() -> Double {
+    if engine == .web { return webPositionSec }
     let time = player.currentTime()
     return time.isNumeric ? time.seconds : 0
   }
@@ -313,8 +479,11 @@ public final class AuVideoPlayerCore: NSObject {
     attachTo(container, surfaceId: surfaceId)
   }
 
+  /// The view of the currently-active engine (re-parented across surfaces).
+  private var activeView: UIView { (engine == .web ? webView : nil) ?? hostView }
+
   @objc public func detach() {
-    hostView.removeFromSuperview()
+    activeView.removeFromSuperview()
     if let surfaceId = currentSurfaceId {
       delegate?.onDetach(surfaceId)
     }
@@ -331,8 +500,8 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func onSurfaceUnavailable(_ surfaceId: String, view: UIView) {
-    if currentSurfaceId == surfaceId, hostView.superview === view {
-      hostView.removeFromSuperview()
+    if currentSurfaceId == surfaceId, activeView.superview === view {
+      activeView.removeFromSuperview()
       currentSurfaceId = nil
       // Keep playing hidden (audio); remounting the same surface re-attaches.
       pendingSurfaceId = surfaceId
@@ -341,17 +510,21 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   private func attachTo(_ container: UIView, surfaceId: String) {
-    if currentSurfaceId == surfaceId, hostView.superview === container {
+    let view = activeView
+    if currentSurfaceId == surfaceId, view.superview === container {
       pendingSurfaceId = nil
       return
     }
     if let previous = currentSurfaceId, previous != surfaceId {
       delegate?.onDetach(previous)
     }
-    hostView.removeFromSuperview()
-    hostView.frame = container.bounds
-    hostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    container.addSubview(hostView)
+    // Detach whichever engine view is currently in this container (engine swap).
+    if hostView.superview === container { hostView.removeFromSuperview() }
+    if let wv = webView, wv.superview === container { wv.removeFromSuperview() }
+    view.removeFromSuperview()
+    view.frame = container.bounds
+    view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    container.addSubview(view)
     currentSurfaceId = surfaceId
     pendingSurfaceId = nil
     delegate?.onAttach(surfaceId)
@@ -397,6 +570,18 @@ public final class AuVideoPlayerCore: NSObject {
       buffered = max(end - position, 0)
     }
     delegate?.onProgress(position, duration: duration, buffered: buffered)
+  }
+}
+
+extension AuVideoPlayerCore: WKScriptMessageHandler {
+  public func userContentController(
+    _ userContentController: WKUserContentController,
+    didReceive message: WKScriptMessage
+  ) {
+    guard message.name == "AuBridge", let body = message.body as? String else {
+      return
+    }
+    handleWebMessage(body)
   }
 }
 

@@ -59,8 +59,6 @@ export function FullscreenPlayer() {
   const manager = useVideoManager();
   const fullscreen = usePlayback((s) => s.fullscreen);
   const fullscreenLock = usePlayback((s) => s.fullscreenLock);
-  // YouTube uses its own native (WebView) fullscreen, not this host.
-  const isYouTube = usePlayback((s) => s.currentVideo?.type === 'youtube');
 
   // Android hardware back exits fullscreen (the iOS Modal handles its own).
   useEffect(() => {
@@ -74,7 +72,7 @@ export function FullscreenPlayer() {
     return () => sub.remove();
   }, [manager, fullscreen]);
 
-  if (!fullscreen || isYouTube) {
+  if (!fullscreen) {
     return null;
   }
 

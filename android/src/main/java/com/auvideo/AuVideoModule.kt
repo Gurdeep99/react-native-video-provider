@@ -73,6 +73,7 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
     return SourceSpec(
       id = id,
       uri = uri,
+      type = map.getString("type") ?: "url",
       headers = headers,
       title = map.getString("title"),
       artist = map.getString("artist"),

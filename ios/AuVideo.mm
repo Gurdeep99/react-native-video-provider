@@ -21,8 +21,12 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
           }
         }];
   }
+  NSString *type = source.type().has_value()
+      ? [NSString stringWithUTF8String:source.type().value().c_str()]
+      : @"url";
   return [[AuVideoSourceSpec alloc] initWithVideoId:source.id_()
                                                 uri:source.uri()
+                                               type:type
                                             headers:headers
                                               title:source.title()
                                              artist:source.artist()

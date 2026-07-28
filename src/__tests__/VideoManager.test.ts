@@ -223,53 +223,38 @@ describe('VideoManager', () => {
     });
   });
 
-  describe('youtube routing', () => {
+  describe('youtube (native engine)', () => {
     const youtube = (id: string): VideoSource => ({
       id,
       uri: 'ytVideoId',
       type: 'youtube',
     });
 
-    it('does not touch the native engine for youtube sources', () => {
-      manager.setSource(youtube('yt1'));
-      expect(native.setSource).not.toHaveBeenCalled();
+    it('routes youtube sources through the native engine with type', () => {
+      manager.setSource(youtube('yt1'), { autoplay: false });
+      expect(native.setSource).toHaveBeenCalledTimes(1);
+      expect(native.setSource).toHaveBeenLastCalledWith(
+        expect.objectContaining({ uri: 'ytVideoId', type: 'youtube' }),
+        false
+      );
       expect(manager.store.getState().currentVideo?.type).toBe('youtube');
-      expect(manager.store.getState().status).toBe('loading');
     });
 
-    it('routes commands to the registered youtube controller', () => {
-      const controller = {
-        videoId: 'ytVideoId',
-        play: jest.fn(),
-        pause: jest.fn(),
-        stop: jest.fn(),
-        seekTo: jest.fn(),
-        setRate: jest.fn(),
-        setVolume: jest.fn(),
-        setMuted: jest.fn(),
-        setRepeat: jest.fn(),
-      };
+    it('sends type "url" for a default source', () => {
+      manager.setSource(video('a'), { autoplay: false });
+      expect(native.setSource).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'a', type: 'url' }),
+        false
+      );
+    });
+
+    it('commands route to native for youtube too', () => {
       manager.setSource(youtube('yt1'), { autoplay: false });
-      manager.registerYouTube(controller);
-
       manager.play();
-      expect(controller.play).toHaveBeenCalledTimes(1);
-      expect(native.play).not.toHaveBeenCalled();
-
+      expect(native.play).toHaveBeenCalledTimes(1);
       manager.store.setState({ duration: 100 });
       manager.seek(30);
-      expect(controller.seekTo).toHaveBeenLastCalledWith(30);
-      expect(native.seekTo).not.toHaveBeenCalled();
-    });
-
-    it('reports youtube state back into the store', () => {
-      manager.setSource(youtube('yt1'), { autoplay: false });
-      manager.ytLoad(120);
-      expect(manager.store.getState().duration).toBe(120);
-      expect(manager.store.getState().loading).toBe(false);
-
-      manager.ytStatus('playing');
-      expect(manager.store.getState().playing).toBe(true);
+      expect(native.seekTo).toHaveBeenLastCalledWith(30);
     });
   });
 

@@ -25,7 +25,6 @@ import type {
 } from '../types/video';
 import { VideoControls } from './VideoControls';
 import { VideoSurface } from './VideoSurface';
-import { YouTubeView } from './YouTubeView';
 
 export interface VideoPlayerProps extends ViewProps {
   source: VideoSource;
@@ -296,28 +295,8 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       onError,
     });
 
-    // YouTube plays in a WebView using YouTube's own controls + native
-    // fullscreen (the embed URL + Referer header is what reliably plays
-    // referrer-restricted videos). No overlay controls / library fullscreen.
-    if (source.type === 'youtube') {
-      return (
-        <View style={[styles.container, style]} {...rest}>
-          <YouTubeView
-            videoId={source.uri}
-            autoplay={autoplay}
-            muted={muted}
-            startSeconds={source.startPosition}
-            style={styles.surface}
-          />
-          {thumbnail && loading ? (
-            <View style={styles.surface} pointerEvents="none">
-              {thumbnail()}
-            </View>
-          ) : null}
-        </View>
-      );
-    }
-
+    // Both url and youtube render into the same native surface — the native
+    // core hosts either the player view or a re-parentable WebView.
     return (
       <View style={[styles.container, style]} {...rest}>
         <VideoSurface surfaceId={id} style={styles.surface} />
