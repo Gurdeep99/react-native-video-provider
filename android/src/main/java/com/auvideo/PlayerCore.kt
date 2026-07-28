@@ -289,13 +289,28 @@ object PlayerCore {
 </head><body><div id="p"></div>
 <script>
 var player;
+var tries=0;
 function post(m){try{AuBridge.postMessage(JSON.stringify(m))}catch(e){}}
-window.auCmd=function(f,a){try{player&&player[f]&&player[f].apply(player,a);}catch(e){}};
+// WebViews routinely ignore the autoplay playerVar, leaving the player
+// "unstarted" (which also shows YouTube's big play button). Nudge it until
+// it actually reaches playing/buffering.
+function kick(){
+  if(tries++>15||!player||!player.getPlayerState)return;
+  var s=player.getPlayerState();
+  if(s===1||s===3)return;
+  try{player.playVideo();}catch(e){}
+  setTimeout(kick,300);
+}
+window.auCmd=function(f,a){try{player&&player[f]&&player[f].apply(player,a);
+  if(f==='loadVideoById'||f==='playVideo'){tries=0;setTimeout(kick,300);}}catch(e){}};
 var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
 function onYouTubeIframeAPIReady(){
   player=new YT.Player('p',{videoId:'$videoId',host:'https://www.youtube.com',
     playerVars:{autoplay:$auto,controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,start:$start},
-    events:{onReady:function(){post({type:'ready',duration:player.getDuration()});},
+    events:{onReady:function(){
+        post({type:'ready',duration:player.getDuration()});
+        if($auto){try{player.playVideo();}catch(e){}tries=0;kick();}
+      },
       onStateChange:function(e){post({type:'state',state:e.data});},
       onError:function(e){post({type:'error',code:e.data});}}});
 }
