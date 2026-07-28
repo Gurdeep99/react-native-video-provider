@@ -1,6 +1,10 @@
 #import "AuVideo.h"
 
 #import <AVKit/AVKit.h>
+// WebKit must be imported before AuVideo-Swift.h: the generated header declares
+// a WKScriptMessageHandler conformance but only forward-declares WK classes, and
+// its own `@import WebKit` is skipped when Clang modules are off (RN default).
+#import <WebKit/WebKit.h>
 
 #if __has_include(<AuVideo/AuVideo-Swift.h>)
 #import <AuVideo/AuVideo-Swift.h>

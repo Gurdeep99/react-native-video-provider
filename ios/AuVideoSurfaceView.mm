@@ -7,6 +7,8 @@
 #import <React/RCTConversions.h>
 
 #import <AVKit/AVKit.h>
+// Must precede AuVideo-Swift.h — see the note in AuVideo.mm.
+#import <WebKit/WebKit.h>
 
 #if __has_include(<AuVideo/AuVideo-Swift.h>)
 #import <AuVideo/AuVideo-Swift.h>
