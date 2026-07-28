@@ -76,6 +76,8 @@ public final class AuVideoPlayerCore: NSObject {
   private var engine: Engine = .exo
   private var webPositionSec: Double = 0
   private var webDurationSec: Double = 0
+  /// True once the IFrame player is created — lets us swap videos instantly.
+  private var webLoaded = false
   private var webView: WKWebView?
 
   private func ensureWebView() -> WKWebView {
@@ -176,9 +178,11 @@ public final class AuVideoPlayerCore: NSObject {
     player.replaceCurrentItem(with: nil)
     if let wv = webView {
       wv.configuration.userContentController.removeScriptMessageHandler(forName: "AuBridge")
+      wv.removeFromSuperview()
       wv.loadHTMLString("", baseURL: nil)
       webView = nil
     }
+    webLoaded = false
     engine = .exo
     pipController = nil
     currentVideoId = nil
@@ -296,15 +300,26 @@ public final class AuVideoPlayerCore: NSObject {
     delegate?.onStatusChange("loading")
 
     let wv = ensureWebView()
-    let html = youTubeHtml(
-      videoId: source.uri,
-      autoplay: autoplay,
-      start: Int(source.startPosition)
-    )
-    // baseURL gives the page a youtube.com origin/referrer — the embed rejects
-    // other referrers (Error 153). No `www` matches the referrer that works.
-    wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
+    let start = Int(source.startPosition)
+    if webLoaded {
+      // Player already alive — swap the video instantly, no page reload.
+      webCmd(autoplay ? "loadVideoById" : "cueVideoById", [source.uri, start])
+    } else {
+      // First time: load the page. baseURL gives it a youtube.com referrer —
+      // the embed rejects other referrers (Error 153). No `www` to match.
+      let html = youTubeHtml(videoId: source.uri, autoplay: autoplay, start: start)
+      wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
+    }
     reAttachActive()
+  }
+
+  /// Emit onLoad once per loaded video. `ready` fires only for the first page
+  /// load; a subsequent `loadVideoById` swap surfaces via the first play state.
+  private func reportWebLoadIfNeeded() {
+    guard !loadReported else { return }
+    loadReported = true
+    delegate?.onLoad(
+      currentVideoId ?? "", duration: webDurationSec, width: 0, height: 0)
   }
 
   /// Fire an IFrame-API command into the WebView (no-op unless WEB engine).
@@ -331,15 +346,14 @@ public final class AuVideoPlayerCore: NSObject {
     else { return }
     switch obj["type"] as? String {
     case "ready":
+      webLoaded = true
       webDurationSec = (obj["duration"] as? Double) ?? 0
-      if !loadReported {
-        loadReported = true
-        delegate?.onLoad(
-          currentVideoId ?? "", duration: webDurationSec, width: 0, height: 0)
-      }
+      reportWebLoadIfNeeded()
     case "state":
       switch (obj["state"] as? Int) ?? -99 {
-      case 1: delegate?.onStatusChange("playing")
+      case 1:
+        reportWebLoadIfNeeded()
+        delegate?.onStatusChange("playing")
       case 2: delegate?.onStatusChange("paused")
       case 3: delegate?.onStatusChange("buffering")
       case 0:

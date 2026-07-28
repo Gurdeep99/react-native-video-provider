@@ -72,6 +72,8 @@ object PlayerCore {
   private enum class Engine { EXO, WEB }
   private var engine = Engine.EXO
   private var webView: WebView? = null
+  /** True once the IFrame player is created — lets us swap videos instantly. */
+  private var webLoaded = false
   private var webPositionSec = 0.0
   private var webDurationSec = 0.0
 
@@ -123,8 +125,12 @@ object PlayerCore {
     playerView?.player = null
     player = null
     playerView = null
-    webView?.destroy()
+    webView?.let { wv ->
+      (wv.parent as? ViewGroup)?.removeView(wv)
+      wv.destroy()
+    }
     webView = null
+    webLoaded = false
     engine = Engine.EXO
     currentVideoId = null
     pendingSurfaceId = null
@@ -216,10 +222,16 @@ object PlayerCore {
     webDurationSec = 0.0
     listener?.onStatusChange("loading")
 
-    val html = buildYouTubeHtml(source.uri, autoplay, source.startPosition.toInt())
-    // baseUrl gives the page a youtube.com origin/referrer — the embed rejects
-    // other referrers (Error 153). No `www` matches the referrer that works.
-    wv.loadDataWithBaseURL("https://youtube.com", html, "text/html", "utf-8", null)
+    val start = source.startPosition.toInt()
+    if (webLoaded) {
+      // Player already alive — swap the video instantly, no page reload.
+      webCmd(if (autoplay) "loadVideoById" else "cueVideoById", source.uri, start)
+    } else {
+      // First time: load the page. baseUrl gives it a youtube.com referrer —
+      // the embed rejects other referrers (Error 153). No `www` to match.
+      val html = buildYouTubeHtml(source.uri, autoplay, start)
+      wv.loadDataWithBaseURL("https://youtube.com", html, "text/html", "utf-8", null)
+    }
     reAttachActive()
   }
 
@@ -228,14 +240,12 @@ object PlayerCore {
       val json = org.json.JSONObject(data)
       when (json.optString("type")) {
         "ready" -> {
+          webLoaded = true
           webDurationSec = json.optDouble("duration", 0.0)
-          if (!loadReported) {
-            loadReported = true
-            listener?.onLoad(currentVideoId ?: "", webDurationSec, 0, 0)
-          }
+          reportWebLoadIfNeeded()
         }
         "state" -> when (json.optInt("state", -99)) {
-          1 -> listener?.onStatusChange("playing")
+          1 -> { reportWebLoadIfNeeded(); listener?.onStatusChange("playing") }
           2 -> listener?.onStatusChange("paused")
           3 -> listener?.onStatusChange("buffering")
           0 -> { listener?.onStatusChange("ended"); listener?.onEnd() }
@@ -251,8 +261,19 @@ object PlayerCore {
     }
   }
 
+  /**
+   * Emit onLoad once per loaded video. `ready` fires only for the first page
+   * load; a subsequent `loadVideoById` swap surfaces via the first play state.
+   */
+  private fun reportWebLoadIfNeeded() {
+    if (loadReported) return
+    loadReported = true
+    listener?.onLoad(currentVideoId ?: "", webDurationSec, 0, 0)
+  }
+
   /** Fire an IFrame-API command into the WebView (no-op unless WEB engine). */
   private fun webCmd(func: String, vararg args: Any) {
+    if (engine != Engine.WEB) return
     val wv = webView ?: return
     val encoded = args.joinToString(",") { a ->
       if (a is String) "'$a'" else a.toString()
