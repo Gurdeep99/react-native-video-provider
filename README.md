@@ -285,8 +285,35 @@ import AuVideo
 func application(_ application: UIApplication,
                  supportedInterfaceOrientationsFor window: UIWindow?)
     -> UIInterfaceOrientationMask {
+  // Pass your app's own restriction as the default — the library only
+  // overrides it while it holds a lock (fullscreen / setOrientation).
   return AuVideoOrientation.mask(withDefault: .portrait)
 }
+```
+
+**If your app swizzles RN modal orientation.** Some apps override
+`RCTModalHostViewController.supportedInterfaceOrientations` to force an
+app-wide orientation. That swizzle also applies to this library's fullscreen
+host (an RN `Modal`) and will pin it — landscape fullscreen then silently
+fails on iOS while working on Android. Route the swizzle through the library
+too:
+
+```swift
+extension UIViewController {
+  @objc func rct_supportedInterfaceOrientations() -> UIInterfaceOrientationMask {
+    return AuVideoOrientation.mask(withDefault: .portrait)
+  }
+}
+```
+
+**Orientation is app-wide, not per-player.** `AuVideoOrientation` is the single
+authority, so use it for *other* players/screens too rather than patching them
+or hand-rolling a second mechanism:
+
+```tsx
+const player = useVideo();
+player.setOrientation('landscape'); // entering some other fullscreen
+player.setOrientation('auto');      // release it
 ```
 
 ### iOS — Picture in Picture / background audio

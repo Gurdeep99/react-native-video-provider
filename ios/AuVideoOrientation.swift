@@ -31,10 +31,16 @@ public final class AuVideoOrientation: NSObject {
   public static func mask(
     withDefault defaultMask: UIInterfaceOrientationMask
   ) -> UIInterfaceOrientationMask {
-    if !lockMask.isEmpty {
-      return lockMask
-    }
-    return isFullscreenActive ? fullscreenMask : defaultMask
+    let result = !lockMask.isEmpty
+      ? lockMask
+      : (isFullscreenActive ? fullscreenMask : defaultMask)
+    // Never hand back an empty mask. A view controller (e.g. an RN Modal host)
+    // that reports no supported orientation makes its intersection with the
+    // app's mask empty, and iOS then throws UIApplicationInvalidInterfaceOrientation
+    // when shouldAutorotate is true. This happens when the host forwards an
+    // empty defaultMask (e.g. its own restriction was momentarily 0). Fall back
+    // to a permissive mask so the current orientation stays valid.
+    return result.isEmpty ? .allButUpsideDown : result
   }
 
   /// Enter fullscreen and apply `orientation` in the same call — never as a
