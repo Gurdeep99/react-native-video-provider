@@ -90,6 +90,8 @@ object PlayerCore {
   private var webView: WebView? = null
   /** True once the IFrame player is created — lets us swap videos instantly. */
   private var webLoaded = false
+  /** Warming the page in the background; its events aren't user-visible yet. */
+  private var webWarming = false
   private var webPositionSec = 0.0
   private var webDurationSec = 0.0
 
@@ -152,6 +154,7 @@ object PlayerCore {
     }
     webView = null
     webLoaded = false
+    webWarming = false
     engine = Engine.EXO
     currentVideoId = null
     pendingSurfaceId = null
@@ -186,6 +189,11 @@ object PlayerCore {
     loadReported = false
     liveRecoveries = 0
     reportedLive = null
+    // Silence the progress ticker across the swap. It samples the player every
+    // 500ms, and until the new item is ready those samples still describe the
+    // OLD source — leaving a live stream, that means a large live-window
+    // position paired with duration 0, which renders as a garbage seekbar.
+    stopProgress()
     listener?.onStatusChange("loading")
 
     val item = preloaded.remove(source.id) ?: buildMediaItem(source)
@@ -250,6 +258,7 @@ object PlayerCore {
     val dead = webView
     webView = null
     webLoaded = false
+    webWarming = false
     dead?.let {
       (it.parent as? ViewGroup)?.removeView(it)
       it.destroy()
@@ -305,6 +314,8 @@ object PlayerCore {
     } else {
       // First time: load the page. baseUrl gives it a youtube.com referrer —
       // the embed rejects other referrers (Error 153). No `www` to match.
+      // This supersedes any in-flight warm, so its event guard must lift.
+      webWarming = false
       val html = buildYouTubeHtml(source.uri, autoplay, start)
       wv.loadDataWithBaseURL("https://youtube.com", html, "text/html", "utf-8", null)
     }
@@ -314,6 +325,16 @@ object PlayerCore {
   private fun handleWebMessage(data: String) {
     try {
       val json = org.json.JSONObject(data)
+      // While warming (or whenever the WebView isn't the active engine) the
+      // page is off-screen scaffolding: record that the player exists, but
+      // don't emit — these events describe a video the user isn't watching.
+      if (webWarming || engine != Engine.WEB) {
+        if (json.optString("type") == "ready") {
+          webLoaded = true
+          webWarming = false
+        }
+        return
+      }
       when (json.optString("type")) {
         "ready" -> {
           webLoaded = true
@@ -377,8 +398,12 @@ object PlayerCore {
     val auto = if (autoplay) 1 else 0
     return """<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}#p{width:100%;height:100%}#p iframe{pointer-events:none}</style>
-</head><body><div id="p"></div>
+<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}
+/* #p is the iframe itself now; pointer-events:none keeps YouTube's own chrome
+   untouchable so the library's controls stay the only interactive layer. */
+#p{width:100%;height:100%;border:0;display:block;pointer-events:none}</style>
+</head><body><iframe id="p" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen
+src="https://www.youtube.com/embed/$videoId?enablejsapi=1&autoplay=$auto&controls=0&playsinline=1&rel=0&modestbranding=1&fs=0&disablekb=1&iv_load_policy=3&start=$start&origin=https://youtube.com"></iframe>
 <script>
 var player;
 var tries=0;
@@ -415,8 +440,11 @@ window.auCmd=function(f,a){try{
   if(f==='loadVideoById'||f==='playVideo'){tries=0;setTimeout(kick,300);}}catch(e){}};
 var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
 function onYouTubeIframeAPIReady(){
-  player=new YT.Player('p',{videoId:'$videoId',host:'https://www.youtube.com',
-    playerVars:{autoplay:$auto,controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,start:$start},
+  // Attach to the iframe already in the document rather than letting YT build
+  // one. The markup version starts fetching the video immediately, in parallel
+  // with this API script, instead of waiting for it — that wait was most of the
+  // delay before first frame. Player vars come from the iframe URL here.
+  player=new YT.Player('p',{
     events:{onReady:function(){
         post({type:'ready',duration:player.getDuration(),live:isLive()});
         if($auto){try{player.playVideo();}catch(e){}tries=0;kick();}
@@ -446,10 +474,30 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
   }
 
   fun preload(source: SourceSpec) {
+    if (source.type == "youtube") {
+      warmYouTube(source)
+      return
+    }
     // v0.1: pre-builds the MediaItem so attach-time setup is instant.
     // Real ahead-of-time buffering via Media3 PreloadManager is roadmap and
     // stays isolated behind this method.
     preloaded[source.id] = buildMediaItem(source)
+  }
+
+  /**
+   * Build the YouTube page ahead of time so the first real play costs a single
+   * loadVideoById instead of a page load, an iframe-API fetch and a player
+   * construction. The video is cued, not played.
+   *
+   * Deliberately invisible: it must not switch the active engine, claim
+   * currentVideoId, or emit events, or it would interrupt whatever is playing.
+   */
+  private fun warmYouTube(source: SourceSpec) {
+    if (webLoaded || webWarming) return
+    val wv = ensureWebView()
+    webWarming = true
+    val html = buildYouTubeHtml(source.uri, autoplay = false, start = 0)
+    wv.loadDataWithBaseURL("https://youtube.com", html, "text/html", "utf-8", null)
   }
 
   private fun buildMediaItem(source: SourceSpec): MediaItem {
@@ -771,8 +819,18 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
   }
 
   private fun emitProgress(exo: ExoPlayer) {
+    // Until the current item reports READY these samples still describe the
+    // previous source. Leaving a live stream that meant emitting a live-window
+    // position (which runs to millions of seconds — "3603:49:34" on a seekbar)
+    // against the new video's duration.
+    if (!loadReported) return
+
     val duration = if (exo.duration == C.TIME_UNSET) 0.0 else exo.duration / 1000.0
-    val position = exo.currentPosition / 1000.0
+    // A live stream's position is measured from the start of the live window,
+    // which for a long-running broadcast runs to millions of seconds. There is
+    // no meaningful scrubber position for live (duration is 0 and the seekbar
+    // is hidden), so report 0 rather than let that number reach the UI.
+    val position = if (exo.isCurrentMediaItemLive) 0.0 else exo.currentPosition / 1000.0
     val buffered = ((exo.bufferedPosition - exo.currentPosition).coerceAtLeast(0L)) / 1000.0
     listener?.onProgress(position, duration, buffered)
   }

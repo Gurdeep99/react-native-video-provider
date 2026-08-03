@@ -80,6 +80,8 @@ public final class AuVideoPlayerCore: NSObject {
   private var webDurationSec: Double = 0
   /// True once the IFrame player is created — lets us swap videos instantly.
   private var webLoaded = false
+  /// Warming the page in the background; its events aren't user-visible yet.
+  private var webWarming = false
   private var webView: WKWebView?
 
   private func ensureWebView() -> WKWebView {
@@ -105,6 +107,7 @@ public final class AuVideoPlayerCore: NSObject {
     let dead = webView
     webView = nil
     webLoaded = false
+    webWarming = false
     dead?.configuration.userContentController
       .removeScriptMessageHandler(forName: "AuBridge")
     dead?.removeFromSuperview()
@@ -249,6 +252,7 @@ public final class AuVideoPlayerCore: NSObject {
       webView = nil
     }
     webLoaded = false
+    webWarming = false
     engine = .exo
     pipController = nil
     currentVideoId = nil
@@ -303,10 +307,28 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func preload(_ source: AuVideoSourceSpec) {
+    if source.type == "youtube" {
+      warmYouTube(source)
+      return
+    }
     // AVPlayerItem starts loading its asset as soon as it exists, so a
     // later attach starts near-instantly.
     guard preloaded[source.videoId] == nil, source.videoId != currentVideoId else { return }
     preloaded[source.videoId] = makeItem(source)
+  }
+
+  /// Build the YouTube page ahead of time so the first real play costs a single
+  /// loadVideoById instead of a page load, an iframe-API fetch and a player
+  /// construction. The video is cued, not played.
+  ///
+  /// Deliberately invisible: it must not switch the active engine, claim
+  /// currentVideoId, or emit events, or it would interrupt what's playing.
+  private func warmYouTube(_ source: AuVideoSourceSpec) {
+    if webLoaded || webWarming { return }
+    let wv = ensureWebView()
+    webWarming = true
+    let html = youTubeHtml(videoId: source.uri, autoplay: false, start: 0)
+    wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
   }
 
   private func makeItem(_ source: AuVideoSourceSpec) -> AVPlayerItem {
@@ -389,6 +411,8 @@ public final class AuVideoPlayerCore: NSObject {
     } else {
       // First time: load the page. baseURL gives it a youtube.com referrer —
       // the embed rejects other referrers (Error 153). No `www` to match.
+      // This supersedes any in-flight warm, so its event guard must lift.
+      webWarming = false
       let html = youTubeHtml(videoId: source.uri, autoplay: autoplay, start: start)
       wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
     }
@@ -435,6 +459,16 @@ public final class AuVideoPlayerCore: NSObject {
     guard let d = data.data(using: .utf8),
           let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
     else { return }
+    // While warming (or whenever the WebView isn't the active engine) the page
+    // is off-screen scaffolding: record that the player exists, but don't emit
+    // — these events describe a video the user isn't watching.
+    if webWarming || engine != .web {
+      if (obj["type"] as? String) == "ready" {
+        webLoaded = true
+        webWarming = false
+      }
+      return
+    }
     switch obj["type"] as? String {
     case "ready":
       webLoaded = true
@@ -471,8 +505,12 @@ public final class AuVideoPlayerCore: NSObject {
     return """
     <!DOCTYPE html><html><head>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}#p{width:100%;height:100%}#p iframe{pointer-events:none}</style>
-    </head><body><div id="p"></div>
+    <style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}
+    /* #p is the iframe itself now; pointer-events:none keeps YouTube's own
+       chrome untouchable so the library's controls stay the only layer. */
+    #p{width:100%;height:100%;border:0;display:block;pointer-events:none}</style>
+    </head><body><iframe id="p" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen
+    src="https://www.youtube.com/embed/\(videoId)?enablejsapi=1&autoplay=\(auto)&controls=0&playsinline=1&rel=0&modestbranding=1&fs=0&disablekb=1&iv_load_policy=3&start=\(start)&origin=https://youtube.com"></iframe>
     <script>
     var player;
     var tries=0;
@@ -509,8 +547,11 @@ public final class AuVideoPlayerCore: NSObject {
       if(f==='loadVideoById'||f==='playVideo'){tries=0;setTimeout(kick,300);}}catch(e){}};
     var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
     function onYouTubeIframeAPIReady(){
-      player=new YT.Player('p',{videoId:'\(videoId)',host:'https://www.youtube.com',
-        playerVars:{autoplay:\(auto),controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,start:\(start)},
+      // Attach to the iframe already in the document rather than letting YT
+      // build one. The markup version starts fetching the video immediately, in
+      // parallel with this API script, instead of waiting for it — that wait was
+      // most of the delay before first frame. Player vars come from the URL.
+      player=new YT.Player('p',{
         events:{onReady:function(){
             post({type:'ready',duration:player.getDuration(),live:isLive()});
             if(\(auto)){try{player.playVideo();}catch(e){}tries=0;kick();}
@@ -808,8 +849,16 @@ public final class AuVideoPlayerCore: NSObject {
 
   private func emitProgress() {
     guard let item = player.currentItem else { return }
-    let position = positionSeconds()
+    // Until the current item reports ready these samples still describe the
+    // previous source — switching away from a live stream that meant emitting
+    // its elapsed position against the new video's duration.
+    guard loadReported else { return }
+
     let duration = item.duration.isNumeric ? item.duration.seconds : 0
+    // A live stream has no meaningful scrubber position (duration is 0 and the
+    // seekbar is hidden), and its elapsed time grows without bound. Report 0
+    // rather than let that reach the UI.
+    let position = isCurrentItemLive() ? 0 : positionSeconds()
     var buffered: Double = 0
     if let range = item.loadedTimeRanges.first?.timeRangeValue {
       let end = range.start.seconds + range.duration.seconds

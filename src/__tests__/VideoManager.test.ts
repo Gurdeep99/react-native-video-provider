@@ -259,6 +259,58 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('live → VOD handover', () => {
+    const fireProgress = (position: number, duration: number) => {
+      const handler = native.onProgress.mock.calls.at(-1)?.[0] as (e: {
+        position: number;
+        duration: number;
+        buffered: number;
+      }) => void;
+      handler({ position, duration, buffered: 0 });
+    };
+
+    it('ignores progress from the outgoing video while the next one loads', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+
+      manager.setSource(video('vodB')); // still loading
+      // A late tick from the live stream: a live-window position of ~150 days,
+      // which previously rendered as "3603:49:34" on the seekbar.
+      fireProgress(12_973_774, 0);
+
+      const s = manager.store.getState();
+      expect(s.position).toBe(0);
+      expect(s.duration).toBe(0);
+    });
+
+    it('clears live state when a VOD follows a live source', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+      expect(manager.store.getState().live).toBe(true);
+
+      manager.setSource(video('vodB'));
+      expect(manager.store.getState().live).toBe(false);
+      expect(manager.store.getState().liveIcon).toBeNull();
+    });
+
+    it('accepts progress again once the new video has loaded', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+      manager.setSource(video('vodB'));
+
+      const onLoad = native.onLoad.mock.calls.at(-1)?.[0] as (e: {
+        videoId: string;
+        duration: number;
+        width: number;
+        height: number;
+      }) => void;
+      onLoad({ videoId: 'vodB', duration: 300, width: 1920, height: 1080 });
+
+      fireProgress(12, 300);
+      expect(manager.store.getState().position).toBe(12);
+    });
+  });
+
   describe('live retry', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());

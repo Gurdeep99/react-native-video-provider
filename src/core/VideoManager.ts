@@ -211,6 +211,13 @@ export class VideoManager {
     );
     subs.push(
       NativeAuVideo.onProgress((e) => {
+        // Drop ticks that arrive while a new source is still loading: they
+        // describe the outgoing video. Both engines gate this natively too,
+        // but this keeps a stale position off the seekbar whichever path
+        // (native player or WebView) emitted it.
+        if (this.store.getState().loading) {
+          return;
+        }
         this.set({
           position: e.position,
           duration: e.duration,
@@ -324,6 +331,11 @@ export class VideoManager {
         duration: 0,
         buffered: 0,
         error: null,
+        // Clear live-ness too, or a VOD loaded after a live stream keeps the
+        // live styling (and hidden seekbar) until the engine re-reports. The
+        // engine sets this again via onLiveChange once the new item is ready.
+        live: false,
+        liveIcon: null,
       });
       // Both engines (native player / native WebView) live behind the same
       // TurboModule; the native side dispatches by source.type.
