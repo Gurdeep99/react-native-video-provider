@@ -82,6 +82,12 @@ public final class AuVideoPlayerCore: NSObject {
   private var webLoaded = false
   /// Warming the page in the background; its events aren't user-visible yet.
   private var webWarming = false
+  /// A play() that arrived before the IFrame player existed.
+  private var pendingWebPlay = false
+  /// Incremented per page load. A discarded page (a warm superseded by a real
+  /// load) can still have a `ready` in flight; echoing this token lets us tell
+  /// that stale message from the current page's.
+  private var webLoadToken = 0
   private var webView: WKWebView?
 
   private func ensureWebView() -> WKWebView {
@@ -327,7 +333,10 @@ public final class AuVideoPlayerCore: NSObject {
     if webLoaded || webWarming { return }
     let wv = ensureWebView()
     webWarming = true
-    let html = youTubeHtml(videoId: source.uri, autoplay: false, start: 0)
+    webLoadToken += 1
+    let html = youTubeHtml(
+      videoId: source.uri, autoplay: false, start: 0, token: webLoadToken
+    )
     wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
   }
 
@@ -413,7 +422,15 @@ public final class AuVideoPlayerCore: NSObject {
       // the embed rejects other referrers (Error 153). No `www` to match.
       // This supersedes any in-flight warm, so its event guard must lift.
       webWarming = false
-      let html = youTubeHtml(videoId: source.uri, autoplay: autoplay, start: start)
+      // Guarantee the first play. The autoplay URL param and the in-page kick()
+      // both usually work, but WebViews drop autoplay often enough that the
+      // player can sit "unstarted" — showing YouTube's big play button. Queue
+      // an explicit play for the moment the player reports ready.
+      pendingWebPlay = autoplay
+      webLoadToken += 1
+      let html = youTubeHtml(
+        videoId: source.uri, autoplay: autoplay, start: start, token: webLoadToken
+      )
       wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
     }
     reAttachActive()
@@ -462,8 +479,15 @@ public final class AuVideoPlayerCore: NSObject {
     // While warming (or whenever the WebView isn't the active engine) the page
     // is off-screen scaffolding: record that the player exists, but don't emit
     // — these events describe a video the user isn't watching.
+    let isReady = (obj["type"] as? String) == "ready"
+    // A page we've already replaced can still deliver its `ready`. Acting on it
+    // would mark the *new* page loaded before it is, so anything that doesn't
+    // carry the current token is discarded outright.
+    if isReady, (obj["tok"] as? Int) != webLoadToken {
+      return
+    }
     if webWarming || engine != .web {
-      if (obj["type"] as? String) == "ready" {
+      if isReady {
         webLoaded = true
         webWarming = false
       }
@@ -475,6 +499,11 @@ public final class AuVideoPlayerCore: NSObject {
       webDurationSec = (obj["duration"] as? Double) ?? 0
       reportWebLive(obj)
       reportWebLoadIfNeeded()
+      // Replay a play() that arrived while the player was still loading.
+      if pendingWebPlay {
+        pendingWebPlay = false
+        webCmd("playVideo")
+      }
     case "state":
       reportWebLive(obj)
       switch (obj["state"] as? Int) ?? -99 {
@@ -500,7 +529,12 @@ public final class AuVideoPlayerCore: NSObject {
     }
   }
 
-  private func youTubeHtml(videoId: String, autoplay: Bool, start: Int) -> String {
+  private func youTubeHtml(
+    videoId: String,
+    autoplay: Bool,
+    start: Int,
+    token: Int
+  ) -> String {
     let auto = autoplay ? 1 : 0
     return """
     <!DOCTYPE html><html><head>
@@ -515,6 +549,7 @@ public final class AuVideoPlayerCore: NSObject {
     var player;
     var tries=0;
     var cur='\(videoId)';
+    var tok=\(token);
     function post(m){try{window.webkit.messageHandlers.AuBridge.postMessage(JSON.stringify(m));}catch(e){}}
     // WebViews routinely ignore the autoplay playerVar, leaving the player
     // "unstarted" (which also shows YouTube's big play button). Nudge it until
@@ -553,7 +588,7 @@ public final class AuVideoPlayerCore: NSObject {
       // most of the delay before first frame. Player vars come from the URL.
       player=new YT.Player('p',{
         events:{onReady:function(){
-            post({type:'ready',duration:player.getDuration(),live:isLive()});
+            post({type:'ready',tok:tok,duration:player.getDuration(),live:isLive()});
             if(\(auto)){try{player.playVideo();}catch(e){}tries=0;kick();}
           },
           onStateChange:function(e){
@@ -577,7 +612,17 @@ public final class AuVideoPlayerCore: NSObject {
   // ------------------------------------------------------------- commands
 
   @objc public func play() {
-    if engine == .web { webCmd("playVideo"); return }
+    if engine == .web {
+      // The IFrame player may not exist yet (first load, or a rebuild after the
+      // web content process died). A command sent now would be dropped
+      // silently, so remember the intent and replay it once it reports ready.
+      if !webLoaded {
+        pendingWebPlay = true
+        return
+      }
+      webCmd("playVideo")
+      return
+    }
     if player.currentItem == nil { return }
     player.play()
     if playbackRate != 1 {
@@ -586,7 +631,13 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func pause() {
-    if engine == .web { webCmd("pauseVideo"); return }
+    if engine == .web {
+      // Cancel any deferred play, or a pause issued while the player was
+      // loading would be undone the moment it became ready.
+      pendingWebPlay = false
+      webCmd("pauseVideo")
+      return
+    }
     player.pause()
   }
 

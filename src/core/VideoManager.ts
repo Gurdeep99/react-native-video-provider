@@ -33,6 +33,24 @@ try {
   NetInfo = null;
 }
 
+/**
+ * AppState, resolved lazily. This module deliberately has no runtime import of
+ * `react-native` — that keeps the core engine-agnostic and loadable in a plain
+ * Node test environment — so reach for it only when the listener is wired.
+ */
+function getAppState(): {
+  addEventListener: (
+    type: 'change',
+    cb: (state: string) => void
+  ) => { remove: () => void };
+} | null {
+  try {
+    return require('react-native').AppState ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const LIVE_RETRY_MAX_DELAY_MS = 15000;
 
 /**
@@ -110,6 +128,7 @@ export class VideoManager {
     pauseOnDetach: false,
     lockPortrait: false,
     liveAutoRetry: true,
+    resumeOnFocus: true,
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
@@ -126,6 +145,16 @@ export class VideoManager {
   private pendingLiveRetry = false;
   /** The app called setLive() — stop letting native detection override it. */
   private liveExplicit = false;
+
+  // --- focus resume ---
+  /** The current source was set with autoplay, so focus may resume it. */
+  private autoplayIntent = true;
+  /**
+   * The viewer paused on purpose. Focus must not undo that — without this,
+   * scrolling a paused video out of view and back would restart it.
+   */
+  private userPaused = false;
+  private appStateSub: { remove: () => void } | null = null;
 
   private constructor() {}
 
@@ -146,10 +175,28 @@ export class VideoManager {
     NativeAuVideo.nativeInit();
     this.subscribeNative();
     this.setupNetInfo();
+    this.setupAppState();
     if (this.config.lockPortrait) {
       // Keep the app portrait inline; fullscreen still rotates to landscape.
       this.setOrientation('portrait');
     }
+  }
+
+  /**
+   * Returning to the foreground is the other way a player regains focus.
+   * Both platforms suspend WebView playback while backgrounded and don't
+   * restart it, so YouTube in particular needs the nudge.
+   */
+  private setupAppState(): void {
+    const appState = getAppState();
+    if (!appState) {
+      return;
+    }
+    this.appStateSub = appState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        this.resumeOnFocus();
+      }
+    });
   }
 
   private setupNetInfo(): void {
@@ -323,6 +370,9 @@ export class VideoManager {
       this.clearLiveRetry();
       // Let the engine decide live-ness again for the new source.
       this.liveExplicit = false;
+      // A new source carries its own autoplay intent and clears the pause latch.
+      this.autoplayIntent = autoplay;
+      this.userPaused = false;
       this.set({
         currentVideo: source,
         status: 'loading',
@@ -356,10 +406,16 @@ export class VideoManager {
   }
 
   play(): void {
+    // An explicit play clears the "viewer paused this" latch, so focus-resume
+    // is allowed again.
+    this.userPaused = false;
     NativeAuVideo.play();
   }
 
   pause(): void {
+    // Latch the intent so regaining focus doesn't restart what was paused
+    // deliberately. Cleared by play() or by loading a new source.
+    this.userPaused = true;
     NativeAuVideo.pause();
   }
 
@@ -540,6 +596,30 @@ export class VideoManager {
     this.set({ surfaceId });
     this.setMode(this.deriveMode({}));
     NativeAuVideo.attach(surfaceId);
+    // Coming back into view counts as regaining focus.
+    this.resumeOnFocus();
+  }
+
+  /**
+   * Resume an autoplay source that has come back into focus.
+   *
+   * Deliberately narrow: it only fires for a source the app asked to autoplay,
+   * never after an explicit `pause()`, and never when already playing. YouTube
+   * is the reason this exists — its WebView suspends playback when it loses
+   * focus or the app backgrounds, and nothing restarts it.
+   *
+   * Safe to call before the engine is ready: a play() that lands early is held
+   * natively and replayed once the player reports ready.
+   */
+  private resumeOnFocus(): void {
+    if (!this.config.resumeOnFocus || !this.autoplayIntent || this.userPaused) {
+      return;
+    }
+    const s = this.store.getState();
+    if (!s.currentVideo || s.playing) {
+      return;
+    }
+    NativeAuVideo.play();
   }
 
   /** Detach from any surface. Playback continues (audio) unless configured otherwise. */
@@ -688,6 +768,8 @@ export class VideoManager {
     this.clearLiveRetry();
     this.netUnsub?.();
     this.netUnsub = null;
+    this.appStateSub?.remove();
+    this.appStateSub = null;
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;

@@ -92,6 +92,14 @@ object PlayerCore {
   private var webLoaded = false
   /** Warming the page in the background; its events aren't user-visible yet. */
   private var webWarming = false
+  /** A play() that arrived before the IFrame player existed. */
+  private var pendingWebPlay = false
+  /**
+   * Incremented per page load. A discarded page (a warm superseded by a real
+   * load) can still have a `ready` in flight; echoing this token lets us tell
+   * that stale message from the current page's.
+   */
+  private var webLoadToken = 0
   private var webPositionSec = 0.0
   private var webDurationSec = 0.0
 
@@ -316,7 +324,13 @@ object PlayerCore {
       // the embed rejects other referrers (Error 153). No `www` to match.
       // This supersedes any in-flight warm, so its event guard must lift.
       webWarming = false
-      val html = buildYouTubeHtml(source.uri, autoplay, start)
+      // Guarantee the first play. The autoplay URL param and the in-page kick()
+      // both usually work, but WebViews drop autoplay often enough that the
+      // player can sit "unstarted" — showing YouTube's big play button. Queue
+      // an explicit play for the moment the player reports ready.
+      pendingWebPlay = autoplay
+      webLoadToken += 1
+      val html = buildYouTubeHtml(source.uri, autoplay, start, webLoadToken)
       wv.loadDataWithBaseURL("https://youtube.com", html, "text/html", "utf-8", null)
     }
     reAttachActive()
@@ -325,11 +339,18 @@ object PlayerCore {
   private fun handleWebMessage(data: String) {
     try {
       val json = org.json.JSONObject(data)
+      val isReady = json.optString("type") == "ready"
+      // A page we've already replaced can still deliver its `ready`. Acting on
+      // it would mark the *new* page loaded before it is, so anything that
+      // doesn't carry the current token is discarded outright.
+      if (isReady && json.optInt("tok", -1) != webLoadToken) {
+        return
+      }
       // While warming (or whenever the WebView isn't the active engine) the
       // page is off-screen scaffolding: record that the player exists, but
       // don't emit — these events describe a video the user isn't watching.
       if (webWarming || engine != Engine.WEB) {
-        if (json.optString("type") == "ready") {
+        if (isReady) {
           webLoaded = true
           webWarming = false
         }
@@ -341,6 +362,11 @@ object PlayerCore {
           webDurationSec = json.optDouble("duration", 0.0)
           reportWebLive(json)
           reportWebLoadIfNeeded()
+          // Replay a play() that arrived while the player was still loading.
+          if (pendingWebPlay) {
+            pendingWebPlay = false
+            webCmd("playVideo")
+          }
         }
         "state" -> {
           reportWebLive(json)
@@ -394,7 +420,12 @@ object PlayerCore {
     wv.evaluateJavascript("auCmd('$func',[$encoded]);", null)
   }
 
-  private fun buildYouTubeHtml(videoId: String, autoplay: Boolean, start: Int): String {
+  private fun buildYouTubeHtml(
+    videoId: String,
+    autoplay: Boolean,
+    start: Int,
+    token: Int,
+  ): String {
     val auto = if (autoplay) 1 else 0
     return """<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -408,6 +439,7 @@ src="https://www.youtube.com/embed/$videoId?enablejsapi=1&autoplay=$auto&control
 var player;
 var tries=0;
 var cur='$videoId';
+var tok=$token;
 function post(m){try{AuBridge.postMessage(JSON.stringify(m))}catch(e){}}
 // WebViews routinely ignore the autoplay playerVar, leaving the player
 // "unstarted" (which also shows YouTube's big play button). Nudge it until
@@ -446,7 +478,7 @@ function onYouTubeIframeAPIReady(){
   // delay before first frame. Player vars come from the iframe URL here.
   player=new YT.Player('p',{
     events:{onReady:function(){
-        post({type:'ready',duration:player.getDuration(),live:isLive()});
+        post({type:'ready',tok:tok,duration:player.getDuration(),live:isLive()});
         if($auto){try{player.playVideo();}catch(e){}tries=0;kick();}
       },
       onStateChange:function(e){
@@ -496,7 +528,8 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     if (webLoaded || webWarming) return
     val wv = ensureWebView()
     webWarming = true
-    val html = buildYouTubeHtml(source.uri, autoplay = false, start = 0)
+    webLoadToken += 1
+    val html = buildYouTubeHtml(source.uri, autoplay = false, start = 0, token = webLoadToken)
     wv.loadDataWithBaseURL("https://youtube.com", html, "text/html", "utf-8", null)
   }
 
@@ -568,6 +601,13 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
 
   fun play() {
     if (engine == Engine.WEB) {
+      // The IFrame player may not exist yet (first load, or a rebuild after the
+      // render process died). A command sent now would be dropped silently, so
+      // remember the intent and replay it when the player reports ready.
+      if (!webLoaded) {
+        pendingWebPlay = true
+        return
+      }
       webCmd("playVideo")
       return
     }
@@ -581,6 +621,9 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
 
   fun pause() {
     if (engine == Engine.WEB) {
+      // Cancel any deferred play, or a pause issued while the player was
+      // loading would be undone the moment it became ready.
+      pendingWebPlay = false
       webCmd("pauseVideo")
       return
     }

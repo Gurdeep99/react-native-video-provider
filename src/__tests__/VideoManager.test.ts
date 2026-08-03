@@ -259,6 +259,53 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('resume on focus', () => {
+    it('resumes an autoplay source when it attaches back into view', () => {
+      manager.setSource(video('yt1'), { autoplay: true });
+      native.play.mockClear();
+
+      manager.attach('feed'); // scrolled back into view
+      expect(native.play).toHaveBeenCalled();
+    });
+
+    it('does NOT resume after the viewer paused on purpose', () => {
+      manager.setSource(video('yt1'), { autoplay: true });
+      manager.pause();
+      native.play.mockClear();
+
+      manager.attach('feed');
+      expect(native.play).not.toHaveBeenCalled();
+    });
+
+    it('resumes again once the viewer presses play after pausing', () => {
+      manager.setSource(video('yt1'), { autoplay: true });
+      manager.pause();
+      manager.play(); // clears the pause latch
+      native.play.mockClear();
+
+      manager.attach('feed');
+      expect(native.play).toHaveBeenCalled();
+    });
+
+    it('does NOT resume a source that was never meant to autoplay', () => {
+      manager.setSource(video('yt1'), { autoplay: false });
+      native.play.mockClear();
+
+      manager.attach('feed');
+      expect(native.play).not.toHaveBeenCalled();
+    });
+
+    it('a new autoplay source clears a previous pause', () => {
+      manager.setSource(video('yt1'), { autoplay: true });
+      manager.pause();
+      manager.setSource(video('yt2'), { autoplay: true });
+      native.play.mockClear();
+
+      manager.attach('feed');
+      expect(native.play).toHaveBeenCalled();
+    });
+  });
+
   describe('live → VOD handover', () => {
     const fireProgress = (position: number, duration: number) => {
       const handler = native.onProgress.mock.calls.at(-1)?.[0] as (e: {

@@ -138,4 +138,18 @@ export interface VideoProviderConfig {
    * online). Default true.
    */
   liveAutoRetry?: boolean;
+  /**
+   * Resume playback whenever the player comes back into focus — it attaches to
+   * a surface, or the app returns to the foreground.
+   *
+   * Only applies when the current source was set with `autoplay` (the default),
+   * and never overrides an explicit `pause()`: once the viewer pauses, the
+   * player stays paused across focus changes until something calls `play()` or
+   * a new source loads.
+   *
+   * This matters most for YouTube, whose WebView playback is suspended when it
+   * loses focus or the app backgrounds and does not restart on its own.
+   * Default true.
+   */
+  resumeOnFocus?: boolean;
 }
