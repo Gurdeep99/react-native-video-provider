@@ -35,6 +35,7 @@ jest.mock('../NativeAuVideo', () => ({
     onAttach: jest.fn(() => ({ remove: jest.fn() })),
     onDetach: jest.fn(() => ({ remove: jest.fn() })),
     onPipChange: jest.fn(() => ({ remove: jest.fn() })),
+    onLiveChange: jest.fn(() => ({ remove: jest.fn() })),
   },
 }));
 
@@ -301,6 +302,72 @@ describe('VideoManager', () => {
       manager.setLive(false); // clears the scheduled retry
       jest.advanceTimersByTime(30000);
       expect(native.setSource).not.toHaveBeenCalled();
+    });
+
+    const fireLive = (live: boolean) => {
+      const handler = native.onLiveChange.mock.calls.at(-1)?.[0] as (e: {
+        live: boolean;
+      }) => void;
+      handler({ live });
+    };
+
+    const fireErrorWith = (code: string, message: string) => {
+      const handler = native.onError.mock.calls.at(-1)?.[0] as (e: {
+        code: string;
+        message: string;
+      }) => void;
+      handler({ code, message });
+    };
+
+    it('retries a natively-detected live source without setLive()', () => {
+      manager.setSource(video('live1'));
+      fireLive(true); // engine reports an HLS live window / YouTube isLive
+      native.setSource.mockClear();
+
+      fireError();
+      jest.advanceTimersByTime(1000);
+      expect(native.setSource).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets an explicit setLive() override native detection', () => {
+      manager.setSource(video('vod1'));
+      manager.setLive(false); // app insists this is not live
+      fireLive(true); // native disagrees — explicit wins
+      native.setSource.mockClear();
+
+      expect(manager.store.getState().live).toBe(false);
+      fireError();
+      jest.advanceTimersByTime(30000);
+      expect(native.setSource).not.toHaveBeenCalled();
+    });
+
+    it('re-enables native detection when the source changes', () => {
+      manager.setSource(video('vod1'));
+      manager.setLive(false);
+      manager.setSource(video('live2')); // new source clears the pin
+      fireLive(true);
+
+      expect(manager.store.getState().live).toBe(true);
+    });
+
+    it('does NOT retry a YouTube video that is gone or un-embeddable', () => {
+      manager.setSource(video('live1'));
+      manager.setLive(true);
+      native.setSource.mockClear();
+
+      fireErrorWith('youtube', '150'); // embedding disallowed — never recovers
+      jest.advanceTimersByTime(30000);
+      expect(native.setSource).not.toHaveBeenCalled();
+    });
+
+    it('still retries a transient YouTube error', () => {
+      manager.setSource(video('live1'));
+      manager.setLive(true);
+      native.setSource.mockClear();
+
+      fireErrorWith('youtube', '5'); // transient HTML5 player fault
+      jest.advanceTimersByTime(1000);
+      expect(native.setSource).toHaveBeenCalledTimes(1);
     });
   });
 

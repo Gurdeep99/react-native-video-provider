@@ -10,7 +10,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -21,6 +23,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
@@ -58,11 +61,24 @@ object PlayerCore {
     fun onError(code: String, message: String)
     fun onAttach(surfaceId: String)
     fun onDetach(surfaceId: String)
+    /** Source turned out to be (or stopped being) a live stream. */
+    fun onLiveChange(live: Boolean)
   }
 
   var listener: Listener? = null
 
   private const val PROGRESS_INTERVAL_MS = 500L
+
+  /**
+   * Cap on in-place live recoveries per load. A live edge that keeps throwing
+   * is a genuinely broken feed, so stop re-preparing in a tight loop and let
+   * the error surface to JS, which retries with backoff. Reset whenever
+   * playback actually recovers.
+   */
+  private const val MAX_LIVE_RECOVERIES = 5
+
+  /** Segment-load retries before ExoPlayer gives up (default is 3). */
+  private const val LIVE_SEGMENT_RETRIES = 6
 
   private var appContext: Context? = null
   private var player: ExoPlayer? = null
@@ -85,6 +101,11 @@ object PlayerCore {
 
   private var loadReported = false
   private val preloaded = HashMap<String, MediaItem>()
+
+  /** In-place live recoveries since the last successful playback. */
+  private var liveRecoveries = 0
+  /** Last live-ness we told JS about, so we only emit on change. */
+  private var reportedLive: Boolean? = null
 
   private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -163,6 +184,8 @@ object PlayerCore {
 
     currentVideoId = source.id
     loadReported = false
+    liveRecoveries = 0
+    reportedLive = null
     listener?.onStatusChange("loading")
 
     val item = preloaded.remove(source.id) ?: buildMediaItem(source)
@@ -197,8 +220,60 @@ object PlayerCore {
       },
       "AuBridge"
     )
+    wv.webViewClient = object : WebViewClient() {
+      /**
+       * The WebView renders in its own OS process, which Android kills under
+       * memory pressure — likely during a long live stream. Returning false
+       * (the default) takes the whole app down with it. Returning true keeps
+       * the app alive; the dead WebView can never be reused, so drop it and
+       * rebuild from scratch.
+       */
+      override fun onRenderProcessGone(
+        view: WebView,
+        detail: RenderProcessGoneDetail?,
+      ): Boolean {
+        if (view !== webView) return true
+        recoverFromWebProcessDeath()
+        return true
+      }
+    }
     webView = wv
     return wv
+  }
+
+  /**
+   * Rebuild the YouTube player after its render process died. The old WebView
+   * is unusable, so tear it down and reload the page at the last known
+   * position; playback resumes where the viewer was.
+   */
+  private fun recoverFromWebProcessDeath() {
+    val dead = webView
+    webView = null
+    webLoaded = false
+    dead?.let {
+      (it.parent as? ViewGroup)?.removeView(it)
+      it.destroy()
+    }
+    val id = currentVideoId
+    if (engine != Engine.WEB || id == null) return
+    listener?.onStatusChange("buffering")
+    val resumeAt = webPositionSec
+    // Force a full page load: currentVideoId is cleared so setYouTube can't
+    // take its "same video, just resume" shortcut into the dead WebView.
+    currentVideoId = null
+    setYouTube(
+      SourceSpec(
+        id = id,
+        uri = id,
+        type = "youtube",
+        headers = emptyMap(),
+        title = null,
+        artist = null,
+        artworkUri = null,
+        startPosition = resumeAt,
+      ),
+      autoplay = true,
+    )
   }
 
   private fun setYouTube(source: SourceSpec, autoplay: Boolean) {
@@ -220,6 +295,7 @@ object PlayerCore {
     loadReported = false
     webPositionSec = 0.0
     webDurationSec = 0.0
+    reportedLive = null
     listener?.onStatusChange("loading")
 
     val start = source.startPosition.toInt()
@@ -242,13 +318,17 @@ object PlayerCore {
         "ready" -> {
           webLoaded = true
           webDurationSec = json.optDouble("duration", 0.0)
+          reportWebLive(json)
           reportWebLoadIfNeeded()
         }
-        "state" -> when (json.optInt("state", -99)) {
-          1 -> { reportWebLoadIfNeeded(); listener?.onStatusChange("playing") }
-          2 -> listener?.onStatusChange("paused")
-          3 -> listener?.onStatusChange("buffering")
-          0 -> { listener?.onStatusChange("ended"); listener?.onEnd() }
+        "state" -> {
+          reportWebLive(json)
+          when (json.optInt("state", -99)) {
+            1 -> { reportWebLoadIfNeeded(); listener?.onStatusChange("playing") }
+            2 -> listener?.onStatusChange("paused")
+            3 -> listener?.onStatusChange("buffering")
+            0 -> { listener?.onStatusChange("ended"); listener?.onEnd() }
+          }
         }
         "time" -> {
           webPositionSec = json.optDouble("position", 0.0)
@@ -259,6 +339,18 @@ object PlayerCore {
       }
     } catch (_: Exception) {
     }
+  }
+
+  /**
+   * Mirror the YouTube player's live-ness to JS, emitting only on change so a
+   * 2 Hz message stream doesn't churn the store.
+   */
+  private fun reportWebLive(json: org.json.JSONObject) {
+    if (!json.has("live")) return
+    val live = json.optBoolean("live", false)
+    if (reportedLive == live) return
+    reportedLive = live
+    listener?.onLiveChange(live)
   }
 
   /**
@@ -290,6 +382,7 @@ object PlayerCore {
 <script>
 var player;
 var tries=0;
+var cur='$videoId';
 function post(m){try{AuBridge.postMessage(JSON.stringify(m))}catch(e){}}
 // WebViews routinely ignore the autoplay playerVar, leaving the player
 // "unstarted" (which also shows YouTube's big play button). Nudge it until
@@ -301,18 +394,45 @@ function kick(){
   try{player.playVideo();}catch(e){}
   setTimeout(kick,300);
 }
-window.auCmd=function(f,a){try{player&&player[f]&&player[f].apply(player,a);
+// YouTube reports live-ness only via getVideoData(), which is undocumented —
+// guard it and fall back to the duration===0 heuristic live streams exhibit.
+function isLive(){
+  try{var d=player.getVideoData&&player.getVideoData();
+    if(d&&typeof d.isLive==='boolean')return d.isLive;}catch(e){}
+  try{return player.getDuration()===0;}catch(e){return false;}
+}
+// A live stream that drops leaves the player stopped on a still-valid video.
+// Reloading the same id rejoins the broadcast; capped so a permanently dead
+// stream stops looping here and surfaces to JS instead.
+var revives=0;
+function revive(){
+  if(revives++>=5||!player)return;
+  try{player.loadVideoById(cur);tries=0;setTimeout(kick,500);}catch(e){}
+}
+window.auCmd=function(f,a){try{
+  if(f==='loadVideoById'||f==='cueVideoById'){cur=a[0];revives=0;}
+  player&&player[f]&&player[f].apply(player,a);
   if(f==='loadVideoById'||f==='playVideo'){tries=0;setTimeout(kick,300);}}catch(e){}};
 var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
 function onYouTubeIframeAPIReady(){
   player=new YT.Player('p',{videoId:'$videoId',host:'https://www.youtube.com',
     playerVars:{autoplay:$auto,controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,start:$start},
     events:{onReady:function(){
-        post({type:'ready',duration:player.getDuration()});
+        post({type:'ready',duration:player.getDuration(),live:isLive()});
         if($auto){try{player.playVideo();}catch(e){}tries=0;kick();}
       },
-      onStateChange:function(e){post({type:'state',state:e.data});},
-      onError:function(e){post({type:'error',code:e.data});}}});
+      onStateChange:function(e){
+        if(e.data===1)revives=0;
+        // Live feeds don't "end" — a 0 state means the broadcast dropped.
+        if(e.data===0&&isLive()){revive();return;}
+        post({type:'state',state:e.data,live:isLive()});
+      },
+      // 2/5 are transient player faults on a valid video; 100/101/150 mean the
+      // video is gone or embedding is disallowed, which retrying can't fix.
+      onError:function(e){
+        if((e.data===2||e.data===5)&&revives<5){revive();return;}
+        post({type:'error',code:e.data});
+      }}});
 }
 setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',position:player.getCurrentTime(),duration:player.getDuration()});}},500);
 </script></body></html>"""
@@ -349,10 +469,51 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     val context = requireNotNull(appContext)
     val httpFactory = DefaultHttpDataSource.Factory()
       .setAllowCrossProtocolRedirects(true)
+      // A live segment request that hangs shouldn't stall playback for the
+      // default 8s — fail fast so the retry policy can fetch the next one.
+      .setConnectTimeoutMs(8_000)
+      .setReadTimeoutMs(8_000)
     if (headers.isNotEmpty()) {
       httpFactory.setDefaultRequestProperties(headers)
     }
     return DefaultMediaSourceFactory(DefaultDataSource.Factory(context, httpFactory))
+      // Mobile networks drop individual segments constantly; the default of 3
+      // retries surfaces a fatal error on what is usually a transient blip.
+      .setLoadErrorHandlingPolicy(
+        DefaultLoadErrorHandlingPolicy(LIVE_SEGMENT_RETRIES)
+      )
+  }
+
+  /**
+   * True for errors a live stream can recover from in place by seeking back to
+   * the live edge and re-preparing.
+   *
+   * `BEHIND_LIVE_WINDOW` is the classic: the player was paused/backgrounded
+   * long enough that its position fell off the start of the sliding window.
+   * The network cases are transient blips on mobile — the feed itself is fine.
+   */
+  private fun isRecoverableLiveError(error: PlaybackException): Boolean {
+    if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+      return true
+    }
+    // Only worth re-preparing a source that has a live edge to seek to.
+    if (player?.isCurrentMediaItemLive != true) return false
+    return when (error.errorCode) {
+      PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+      PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+      PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+      -> true
+      else -> false
+    }
+  }
+
+  /** Emit live-ness to JS when it changes, so the UI needs no manual setLive. */
+  private fun reportLiveIfChanged() {
+    val exo = player ?: return
+    val live = exo.isCurrentMediaItemLive
+    if (reportedLive == live) return
+    reportedLive = live
+    listener?.onLiveChange(live)
   }
 
   // ------------------------------------------------------------- commands
@@ -538,6 +699,9 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
       when (state) {
         Player.STATE_BUFFERING -> listener?.onStatusChange("buffering")
         Player.STATE_READY -> {
+          // Playing again — let a future stall spend a fresh recovery budget.
+          liveRecoveries = 0
+          reportLiveIfChanged()
           if (!loadReported) {
             loadReported = true
             val size = exo.videoSize
@@ -581,6 +745,18 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     }
 
     override fun onPlayerError(error: PlaybackException) {
+      val exo = player
+      if (exo != null && isRecoverableLiveError(error) && liveRecoveries < MAX_LIVE_RECOVERIES) {
+        // Falling behind the live window (backgrounded, long stall, network
+        // drop) leaves the player IDLE holding a now-invalid position. Seeking
+        // back to the live edge and re-preparing resumes in place — far faster
+        // than surfacing an error and letting JS rebuild the whole source.
+        liveRecoveries += 1
+        listener?.onStatusChange("buffering")
+        exo.seekToDefaultPosition()
+        exo.prepare()
+        return
+      }
       listener?.onError(error.errorCodeName, error.message ?: "Playback error")
     }
   }

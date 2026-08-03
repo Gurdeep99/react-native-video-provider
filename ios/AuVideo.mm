@@ -240,4 +240,9 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
   [self emitOnPipChange:@{@"active": @(active)}];
 }
 
+- (void)onLiveChange:(BOOL)live
+{
+  [self emitOnLiveChange:@{@"live": @(live)}];
+}
+
 @end

@@ -56,6 +56,10 @@ export type NativePipEvent = {
   active: boolean;
 };
 
+export type NativeLiveEvent = {
+  live: boolean;
+};
+
 export interface Spec extends TurboModule {
   /** Idempotent. Creates the singleton native player if needed. */
   nativeInit(): void;
@@ -117,6 +121,12 @@ export interface Spec extends TurboModule {
   readonly onAttach: EventEmitter<NativeSurfaceEvent>;
   readonly onDetach: EventEmitter<NativeSurfaceEvent>;
   readonly onPipChange: EventEmitter<NativePipEvent>;
+  /**
+   * The engine determined the source is (or is no longer) a live stream —
+   * ExoPlayer's live window, an indefinite AVPlayerItem duration, or
+   * YouTube's `getVideoData().isLive`. Fires only on change.
+   */
+  readonly onLiveChange: EventEmitter<NativeLiveEvent>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('AuVideo');

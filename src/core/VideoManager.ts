@@ -13,6 +13,7 @@ import type {
   PlayerMode,
   ResizeMode,
   SetSourceOptions,
+  VideoError,
   VideoProviderConfig,
   VideoSource,
   VideoState,
@@ -33,6 +34,25 @@ try {
 }
 
 const LIVE_RETRY_MAX_DELAY_MS = 15000;
+
+/**
+ * YouTube IFrame error codes that no amount of retrying fixes: the video is
+ * private/removed (100) or its owner disallows embedding (101/150). The
+ * transient ones (2, 5) are already retried in-page by the WebView engine.
+ */
+const YOUTUBE_FATAL_CODES = new Set(['100', '101', '150']);
+
+/**
+ * True for errors where the source is permanently unavailable, so live retry
+ * would spin forever against a stream that is never coming back.
+ */
+function isFatalError(error: VideoError): boolean {
+  if (error.code === 'youtube') {
+    // The YouTube engine reports its numeric code in `message`.
+    return YOUTUBE_FATAL_CODES.has(String(error.message).trim());
+  }
+  return false;
+}
 
 /** Surface id used by the built-in fullscreen host. */
 export const FULLSCREEN_SURFACE_ID = '__au_fullscreen__';
@@ -104,6 +124,8 @@ export class VideoManager {
   private liveRetryAttempt = 0;
   /** A live retry deferred because the device is offline. */
   private pendingLiveRetry = false;
+  /** The app called setLive() — stop letting native detection override it. */
+  private liveExplicit = false;
 
   private constructor() {}
 
@@ -217,7 +239,7 @@ export class VideoManager {
       NativeAuVideo.onError((e) => {
         this.set({ error: e, status: 'error', playing: false, loading: false });
         this.events.emit('onError', e);
-        this.maybeRetryLive();
+        this.maybeRetryLive(e);
       })
     );
     subs.push(
@@ -238,6 +260,20 @@ export class VideoManager {
         this.set({ pip: e.active });
         this.setMode(e.active ? 'pip' : this.deriveMode({ pip: false }));
         this.events.emit('onPipChanged', e);
+      })
+    );
+    subs.push(
+      NativeAuVideo.onLiveChange((e) => {
+        // The engine detected live-ness itself, so retry works even when the
+        // app never called setLive(). An explicit setLive() still wins — see
+        // liveExplicit.
+        if (this.liveExplicit) {
+          return;
+        }
+        this.set({ live: e.live });
+        if (!e.live) {
+          this.clearLiveRetry();
+        }
       })
     );
   }
@@ -278,6 +314,8 @@ export class VideoManager {
     if (!sameVideo) {
       // A different video invalidates any in-flight live retry.
       this.clearLiveRetry();
+      // Let the engine decide live-ness again for the new source.
+      this.liveExplicit = false;
       this.set({
         currentVideo: source,
         status: 'loading',
@@ -380,8 +418,13 @@ export class VideoManager {
   /**
    * Mark the active video live (hides the seek bar) and register the badge
    * renderer, so both inline and the built-in fullscreen host show them.
+   *
+   * Optional: the engine auto-detects live streams (HLS live window,
+   * indefinite duration, YouTube `isLive`) and sets this itself. Calling it
+   * pins the value — native detection stops overriding it for this source.
    */
   setLive(live: boolean, liveIcon: LiveIconRenderer | null = null): void {
+    this.liveExplicit = true;
     this.set({ live, liveIcon: live ? liveIcon : null });
     if (!live) {
       this.clearLiveRetry();
@@ -400,10 +443,13 @@ export class VideoManager {
 
   // ------------------------------------------------------ live retry
 
-  /** Retry a failed/dropped LIVE feed — always, unless offline (waits) or
-   *  disabled via `liveAutoRetry: false`. */
-  private maybeRetryLive(): void {
+  /** Retry a failed/dropped LIVE feed — always, unless offline (waits),
+   *  permanently broken, or disabled via `liveAutoRetry: false`. */
+  private maybeRetryLive(error?: VideoError): void {
     if (!this.config.liveAutoRetry || !this.store.getState().live) {
+      return;
+    }
+    if (error && isFatalError(error)) {
       return;
     }
     this.scheduleLiveRetry();
@@ -418,10 +464,14 @@ export class VideoManager {
       this.pendingLiveRetry = true;
       return;
     }
-    const delay = Math.min(
+    // Full jitter on the backoff: when a stream drops it drops for everyone
+    // watching, and un-jittered retries would reconnect in lockstep and
+    // stampede the origin at exactly the moment it's recovering.
+    const ceiling = Math.min(
       1000 * 2 ** this.liveRetryAttempt,
       LIVE_RETRY_MAX_DELAY_MS
     );
+    const delay = ceiling / 2 + Math.random() * (ceiling / 2);
     this.liveRetryAttempt += 1;
     this.liveRetryTimer = setTimeout(() => {
       this.liveRetryTimer = null;

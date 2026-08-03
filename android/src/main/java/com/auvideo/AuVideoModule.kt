@@ -302,6 +302,10 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
     emitOnDetach(Arguments.createMap().apply { putString("surfaceId", surfaceId) })
   }
 
+  override fun onLiveChange(live: Boolean) {
+    emitOnLiveChange(Arguments.createMap().apply { putBoolean("live", live) })
+  }
+
   companion object {
     const val NAME = NativeAuVideoSpec.NAME
   }

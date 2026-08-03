@@ -48,6 +48,8 @@ public protocol AuVideoCoreDelegate: AnyObject {
   func onAttach(_ surfaceId: String)
   func onDetach(_ surfaceId: String)
   func onPipChange(_ active: Bool)
+  /// Source turned out to be (or stopped being) a live stream.
+  func onLiveChange(_ live: Bool)
 }
 
 /// UIView whose backing layer is the AVPlayerLayer. Moving this view between
@@ -90,8 +92,42 @@ public final class AuVideoPlayerCore: NSObject {
     wv.scrollView.isScrollEnabled = false
     wv.isOpaque = false
     wv.backgroundColor = .black
+    wv.navigationDelegate = self
     webView = wv
     return wv
+  }
+
+  /// Rebuild the YouTube player after its web content process died — iOS kills
+  /// it under memory pressure, which a long live stream invites. The dead
+  /// WKWebView renders blank forever and cannot be revived, so replace it and
+  /// reload at the last known position.
+  private func recoverFromWebProcessDeath() {
+    let dead = webView
+    webView = nil
+    webLoaded = false
+    dead?.configuration.userContentController
+      .removeScriptMessageHandler(forName: "AuBridge")
+    dead?.removeFromSuperview()
+
+    guard engine == .web, let id = currentVideoId else { return }
+    delegate?.onStatusChange("buffering")
+    let resumeAt = webPositionSec
+    // Clear the id so setYouTube can't take its "same video, just resume"
+    // shortcut into the WebView we just discarded.
+    currentVideoId = nil
+    setYouTube(
+      AuVideoSourceSpec(
+        videoId: id,
+        uri: id,
+        type: "youtube",
+        headers: [:],
+        title: nil,
+        artist: nil,
+        artworkUri: nil,
+        startPosition: resumeAt
+      ),
+      autoplay: true
+    )
   }
 
   private var currentVideoId: String?
@@ -104,6 +140,16 @@ public final class AuVideoPlayerCore: NSObject {
   private var repeatEnabled = false
   private var playbackRate: Double = 1
   private var initialized = false
+
+  /// Cap on in-place live recoveries per load. A feed that keeps dropping is
+  /// genuinely broken, so stop looping here and let JS retry with backoff.
+  private static let maxLiveRecoveries = 5
+  /// Live recoveries since the last successful playback.
+  private var liveRecoveries = 0
+  /// Last live-ness reported to JS, so we only emit on change.
+  private var reportedLive: Bool?
+  /// Retained so a failed item can be rebuilt from the same source.
+  private var currentSource: AuVideoSourceSpec?
 
   private var timeObserver: Any?
   private var timeControlObservation: NSKeyValueObservation?
@@ -124,6 +170,10 @@ public final class AuVideoPlayerCore: NSObject {
     hostView.playerLayer.player = player
     hostView.playerLayer.videoGravity = .resizeAspect
     player.actionAtItemEnd = .pause
+    // Let AVPlayer start as soon as it has data rather than buffering ahead to
+    // guarantee smooth playback — on a live edge the extra buffer is latency,
+    // and waiting is what turns a brief dip into a visible stall.
+    player.automaticallyWaitsToMinimizeStalling = false
 
     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
     try? AVAudioSession.sharedInstance().setActive(true)
@@ -155,6 +205,22 @@ public final class AuVideoPlayerCore: NSObject {
       self,
       selector: #selector(itemDidPlayToEnd(_:)),
       name: .AVPlayerItemDidPlayToEndTime,
+      object: nil
+    )
+    // A live stream that stalls mid-buffer never resumes on its own — AVPlayer
+    // just sits in waitingToPlayAtSpecifiedRate indefinitely.
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(itemStalled(_:)),
+      name: .AVPlayerItemPlaybackStalled,
+      object: nil
+    )
+    // Distinct from `.failed`: the item survives but playback aborted, which
+    // on a live feed means the edge moved out from under us.
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(itemFailedToPlayToEnd(_:)),
+      name: .AVPlayerItemFailedToPlayToEndTime,
       object: nil
     )
 
@@ -217,7 +283,10 @@ public final class AuVideoPlayerCore: NSObject {
     }
 
     currentVideoId = source.videoId
+    currentSource = source
     loadReported = false
+    liveRecoveries = 0
+    reportedLive = nil
     delegate?.onStatusChange("loading")
 
     let item = preloaded.removeValue(forKey: source.videoId) ?? makeItem(source)
@@ -257,6 +326,9 @@ public final class AuVideoPlayerCore: NSObject {
       guard let self else { return }
       switch item.status {
       case .readyToPlay:
+        // Playing again — let a future stall spend a fresh recovery budget.
+        self.liveRecoveries = 0
+        self.reportLiveIfChanged()
         if !self.loadReported {
           self.loadReported = true
           let size = item.presentationSize
@@ -270,6 +342,14 @@ public final class AuVideoPlayerCore: NSObject {
           )
         }
       case .failed:
+        // A failed item is terminal — AVPlayer never retries it. For a live
+        // source, swap in a fresh item rather than surfacing a dead player.
+        if self.reportedLive == true, self.liveRecoveries < Self.maxLiveRecoveries {
+          self.liveRecoveries += 1
+          self.delegate?.onStatusChange("buffering")
+          self.rebuildCurrentItem()
+          return
+        }
         let error = item.error as NSError?
         self.delegate?.onError(
           String(error?.code ?? -1),
@@ -294,9 +374,11 @@ public final class AuVideoPlayerCore: NSObject {
     }
 
     currentVideoId = source.videoId
+    currentSource = source
     loadReported = false
     webPositionSec = 0
     webDurationSec = 0
+    reportedLive = nil
     delegate?.onStatusChange("loading")
 
     let wv = ensureWebView()
@@ -311,6 +393,15 @@ public final class AuVideoPlayerCore: NSObject {
       wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
     }
     reAttachActive()
+  }
+
+  /// Mirror the YouTube player's live-ness to JS, emitting only on change so a
+  /// 2 Hz message stream doesn't churn the store.
+  private func reportWebLive(_ obj: [String: Any]) {
+    guard let live = obj["live"] as? Bool else { return }
+    if reportedLive == live { return }
+    reportedLive = live
+    delegate?.onLiveChange(live)
   }
 
   /// Emit onLoad once per loaded video. `ready` fires only for the first page
@@ -348,8 +439,10 @@ public final class AuVideoPlayerCore: NSObject {
     case "ready":
       webLoaded = true
       webDurationSec = (obj["duration"] as? Double) ?? 0
+      reportWebLive(obj)
       reportWebLoadIfNeeded()
     case "state":
+      reportWebLive(obj)
       switch (obj["state"] as? Int) ?? -99 {
       case 1:
         reportWebLoadIfNeeded()
@@ -383,6 +476,7 @@ public final class AuVideoPlayerCore: NSObject {
     <script>
     var player;
     var tries=0;
+    var cur='\(videoId)';
     function post(m){try{window.webkit.messageHandlers.AuBridge.postMessage(JSON.stringify(m));}catch(e){}}
     // WebViews routinely ignore the autoplay playerVar, leaving the player
     // "unstarted" (which also shows YouTube's big play button). Nudge it until
@@ -394,18 +488,45 @@ public final class AuVideoPlayerCore: NSObject {
       try{player.playVideo();}catch(e){}
       setTimeout(kick,300);
     }
-    window.auCmd=function(f,a){try{player&&player[f]&&player[f].apply(player,a);
+    // YouTube reports live-ness only via getVideoData(), which is undocumented
+    // — guard it and fall back to the duration===0 heuristic live streams show.
+    function isLive(){
+      try{var d=player.getVideoData&&player.getVideoData();
+        if(d&&typeof d.isLive==='boolean')return d.isLive;}catch(e){}
+      try{return player.getDuration()===0;}catch(e){return false;}
+    }
+    // A live stream that drops leaves the player stopped on a still-valid
+    // video. Reloading the same id rejoins the broadcast; capped so a
+    // permanently dead stream surfaces to JS instead of looping here.
+    var revives=0;
+    function revive(){
+      if(revives++>=5||!player)return;
+      try{player.loadVideoById(cur);tries=0;setTimeout(kick,500);}catch(e){}
+    }
+    window.auCmd=function(f,a){try{
+      if(f==='loadVideoById'||f==='cueVideoById'){cur=a[0];revives=0;}
+      player&&player[f]&&player[f].apply(player,a);
       if(f==='loadVideoById'||f==='playVideo'){tries=0;setTimeout(kick,300);}}catch(e){}};
     var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
     function onYouTubeIframeAPIReady(){
       player=new YT.Player('p',{videoId:'\(videoId)',host:'https://www.youtube.com',
         playerVars:{autoplay:\(auto),controls:0,playsinline:1,rel:0,modestbranding:1,fs:0,disablekb:1,iv_load_policy:3,enablejsapi:1,start:\(start)},
         events:{onReady:function(){
-            post({type:'ready',duration:player.getDuration()});
+            post({type:'ready',duration:player.getDuration(),live:isLive()});
             if(\(auto)){try{player.playVideo();}catch(e){}tries=0;kick();}
           },
-          onStateChange:function(e){post({type:'state',state:e.data});},
-          onError:function(e){post({type:'error',code:e.data});}}});
+          onStateChange:function(e){
+            if(e.data===1)revives=0;
+            // Live feeds don't "end" — a 0 state means the broadcast dropped.
+            if(e.data===0&&isLive()){revive();return;}
+            post({type:'state',state:e.data,live:isLive()});
+          },
+          // 2/5 are transient player faults on a valid video; 100/101/150 mean
+          // the video is gone or embedding is barred, which retrying can't fix.
+          onError:function(e){
+            if((e.data===2||e.data===5)&&revives<5){revive();return;}
+            post({type:'error',code:e.data});
+          }}});
     }
     setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',position:player.getCurrentTime(),duration:player.getDuration()});}},500);
     </script></body></html>
@@ -584,9 +705,105 @@ public final class AuVideoPlayerCore: NSObject {
       player.play()
       return
     }
+    // A live feed doesn't end — reaching "the end" means the edge dropped.
+    if isCurrentItemLive() {
+      recoverLive(reason: "ended")
+      return
+    }
     emitProgress()
     delegate?.onStatusChange("ended")
     delegate?.onEnd()
+  }
+
+  @objc private func itemStalled(_ notification: Notification) {
+    guard let item = notification.object as? AVPlayerItem,
+          item === player.currentItem else { return }
+    delegate?.onStatusChange("buffering")
+    guard isCurrentItemLive() else {
+      // VOD refills its buffer on its own; just nudge the rate back.
+      player.playImmediately(atRate: Float(playbackRate))
+      return
+    }
+    recoverLive(reason: "stalled")
+  }
+
+  @objc private func itemFailedToPlayToEnd(_ notification: Notification) {
+    guard let item = notification.object as? AVPlayerItem,
+          item === player.currentItem else { return }
+    if isCurrentItemLive() {
+      recoverLive(reason: "failed-to-play-to-end")
+      return
+    }
+    let error = notification
+      .userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
+    delegate?.onError(
+      String(error?.code ?? -1),
+      message: error?.localizedDescription ?? "Playback failed"
+    )
+  }
+
+  /// True when the current item has no fixed duration — how HLS live streams
+  /// present themselves to AVPlayer.
+  private func isCurrentItemLive() -> Bool {
+    guard let item = player.currentItem else { return false }
+    if item.duration.isIndefinite { return true }
+    return !item.duration.isNumeric && item.status == .readyToPlay
+  }
+
+  /// Emit live-ness to JS on change, so the UI needs no manual setLive.
+  private func reportLiveIfChanged() {
+    let live = isCurrentItemLive()
+    if reportedLive == live { return }
+    reportedLive = live
+    delegate?.onLiveChange(live)
+  }
+
+  /// Rejoin a live edge that stalled or dropped.
+  ///
+  /// Seeking to `.positiveInfinity` snaps to the newest available segment,
+  /// which clears a stale buffer without the teardown a full reload costs. If
+  /// the item is already dead (`.failed`), no amount of seeking revives it —
+  /// that path needs a brand-new AVPlayerItem.
+  private func recoverLive(reason: String) {
+    guard liveRecoveries < Self.maxLiveRecoveries else {
+      delegate?.onError("live-recovery-exhausted", message: "Live stream unrecoverable (\(reason))")
+      return
+    }
+    liveRecoveries += 1
+    delegate?.onStatusChange("buffering")
+
+    guard let item = player.currentItem else { return }
+    if item.status == .failed {
+      rebuildCurrentItem()
+      return
+    }
+    // Seek to the end of the seekable window — the current live edge. Passing
+    // CMTime.positiveInfinity here would be an indefinite time, which AVPlayer
+    // rejects; the seekable range gives a concrete target.
+    guard let edge = item.seekableTimeRanges.last?.timeRangeValue,
+          edge.duration.isNumeric else {
+      // No seekable window yet (still loading) — a fresh item is the only move.
+      rebuildCurrentItem()
+      return
+    }
+    player.seek(
+      to: CMTimeRangeGetEnd(edge),
+      toleranceBefore: .positiveInfinity,
+      toleranceAfter: .zero
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.player.playImmediately(atRate: Float(self.playbackRate))
+    }
+  }
+
+  /// Replace a failed AVPlayerItem with a fresh one for the same source. A
+  /// failed item is terminal — AVPlayer will not retry it.
+  private func rebuildCurrentItem() {
+    guard let source = currentSource, let id = currentVideoId else { return }
+    let item = makeItem(source)
+    observeItem(item, videoId: id)
+    player.replaceCurrentItem(with: item)
+    player.playImmediately(atRate: Float(playbackRate))
   }
 
   private func emitProgress() {
@@ -611,6 +828,22 @@ extension AuVideoPlayerCore: WKScriptMessageHandler {
       return
     }
     handleWebMessage(body)
+  }
+}
+
+extension AuVideoPlayerCore: WKNavigationDelegate {
+  /// iOS jettisons the web content process under memory pressure; without
+  /// this the YouTube player goes permanently blank with no error.
+  public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    recoverFromWebProcessDeath()
+  }
+
+  public func webView(
+    _ webView: WKWebView,
+    didFail navigation: WKNavigation!,
+    withError error: Error
+  ) {
+    delegate?.onError("webview", message: error.localizedDescription)
   }
 }
 
