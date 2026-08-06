@@ -1,38 +1,38 @@
-package com.auvideo
+package com.video
 
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewManagerDelegate
 import com.facebook.react.uimanager.annotations.ReactProp
-import com.facebook.react.viewmanagers.AuVideoSurfaceViewManagerDelegate
-import com.facebook.react.viewmanagers.AuVideoSurfaceViewManagerInterface
+import com.facebook.react.viewmanagers.VideoSurfaceViewManagerDelegate
+import com.facebook.react.viewmanagers.VideoSurfaceViewManagerInterface
 
-@ReactModule(name = AuVideoSurfaceViewManager.NAME)
-class AuVideoSurfaceViewManager :
-  SimpleViewManager<AuVideoSurfaceView>(),
-  AuVideoSurfaceViewManagerInterface<AuVideoSurfaceView> {
+@ReactModule(name = VideoSurfaceViewManager.NAME)
+class VideoSurfaceViewManager :
+  SimpleViewManager<VideoSurfaceView>(),
+  VideoSurfaceViewManagerInterface<VideoSurfaceView> {
 
-  private val delegate = AuVideoSurfaceViewManagerDelegate(this)
+  private val delegate = VideoSurfaceViewManagerDelegate(this)
 
-  override fun getDelegate(): ViewManagerDelegate<AuVideoSurfaceView> = delegate
+  override fun getDelegate(): ViewManagerDelegate<VideoSurfaceView> = delegate
 
   override fun getName(): String = NAME
 
-  override fun createViewInstance(context: ThemedReactContext): AuVideoSurfaceView =
-    AuVideoSurfaceView(context)
+  override fun createViewInstance(context: ThemedReactContext): VideoSurfaceView =
+    VideoSurfaceView(context)
 
   @ReactProp(name = "surfaceId")
-  override fun setSurfaceId(view: AuVideoSurfaceView, value: String?) {
+  override fun setSurfaceId(view: VideoSurfaceView, value: String?) {
     view.surfaceId = value
   }
 
-  override fun onDropViewInstance(view: AuVideoSurfaceView) {
+  override fun onDropViewInstance(view: VideoSurfaceView) {
     view.surfaceId = null
     super.onDropViewInstance(view)
   }
 
   companion object {
-    const val NAME = "AuVideoSurfaceView"
+    const val NAME = "VideoSurfaceView"
   }
 }

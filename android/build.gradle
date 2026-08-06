@@ -1,5 +1,5 @@
 buildscript {
-  ext.AuVideo = [
+  ext.Video = [
     kotlinVersion: "2.0.21",
     minSdkVersion: 24,
     compileSdkVersion: 36,
@@ -11,7 +11,7 @@ buildscript {
       return rootProject.ext.get(prop)
     }
 
-    return AuVideo[prop]
+    return Video[prop]
   }
 
   repositories {
@@ -33,7 +33,7 @@ apply plugin: "kotlin-android"
 apply plugin: "com.facebook.react"
 
 android {
-  namespace "com.auvideo"
+  namespace "com.video"
 
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 

@@ -1,4 +1,4 @@
-package auvideo.example
+package video.example
 
 import android.app.Application
 import com.facebook.react.PackageList

@@ -5,4 +5,4 @@ export interface NativeProps extends ViewProps {
   surfaceId: string;
 }
 
-export default codegenNativeComponent<NativeProps>('AuVideoSurfaceView');
+export default codegenNativeComponent<NativeProps>('VideoSurfaceView');

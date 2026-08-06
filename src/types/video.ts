@@ -128,7 +128,7 @@ export interface VideoProviderConfig {
   /**
    * Lock the whole app to portrait so the video never sensor-rotates inline —
    * only the fullscreen host rotates to landscape (on tap). Default false.
-   * On iOS this needs the AppDelegate forwarding to `AuVideoOrientation`.
+   * On iOS this needs the AppDelegate forwarding to `VideoOrientation`.
    */
   lockPortrait?: boolean;
   /**

@@ -280,14 +280,14 @@ features and your app already supports all orientations):
 
 ```swift
 // AppDelegate.swift
-import AuVideo
+import Video
 
 func application(_ application: UIApplication,
                  supportedInterfaceOrientationsFor window: UIWindow?)
     -> UIInterfaceOrientationMask {
   // Pass your app's own restriction as the default — the library only
   // overrides it while it holds a lock (fullscreen / setOrientation).
-  return AuVideoOrientation.mask(withDefault: .portrait)
+  return VideoOrientation.mask(withDefault: .portrait)
 }
 ```
 
@@ -301,12 +301,12 @@ too:
 ```swift
 extension UIViewController {
   @objc func rct_supportedInterfaceOrientations() -> UIInterfaceOrientationMask {
-    return AuVideoOrientation.mask(withDefault: .portrait)
+    return VideoOrientation.mask(withDefault: .portrait)
   }
 }
 ```
 
-**Orientation is app-wide, not per-player.** `AuVideoOrientation` is the single
+**Orientation is app-wide, not per-player.** `VideoOrientation` is the single
 authority, so use it for *other* players/screens too rather than patching them
 or hand-rolling a second mechanism:
 

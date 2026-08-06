@@ -3,7 +3,7 @@ require "json"
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
 Pod::Spec.new do |s|
-  s.name         = "AuVideo"
+  s.name         = "Video"
   s.version      = package["version"]
   s.summary      = package["description"]
   s.homepage     = package["homepage"]
@@ -19,7 +19,7 @@ Pod::Spec.new do |s|
   s.frameworks = "AVFoundation", "AVKit", "WebKit"
   s.swift_version = "5.9"
   # Swift core + ObjC++ glue in one pod: the glue imports the generated
-  # <AuVideo/AuVideo-Swift.h>, which requires the pod to define a module.
+  # <Video/Video-Swift.h>, which requires the pod to define a module.
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",
   }

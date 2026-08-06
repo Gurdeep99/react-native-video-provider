@@ -86,7 +86,7 @@ attaches the player the moment the view registers — this makes navigation timi
    re-parented video surface) containing `<VideoSurface id="__fullscreen__">`.
 2. Native side **locks orientation** (default landscape — no sensor rotation): Android sets
    `requestedOrientation` to the locked value and hides system bars; iOS narrows the
-   supported-orientation mask to the lock (app hooks `AuVideoOrientation` in AppDelegate) and
+   supported-orientation mask to the lock (app hooks `VideoOrientation` in AppDelegate) and
    requests a geometry update. Pass `'auto'` to instead unlock to the sensor.
 3. Orientation only changes by tap (fullscreen button / `setOrientation`), not the device sensor,
    unless `autoFullscreenOnRotate` / explicit `'auto'` opts into sensor-follow.

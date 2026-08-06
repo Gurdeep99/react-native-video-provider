@@ -1,4 +1,4 @@
-package com.auvideo
+package com.video
 
 import java.lang.ref.WeakReference
 
@@ -7,14 +7,14 @@ import java.lang.ref.WeakReference
  * an unmounted screen can never be leaked by the registry.
  */
 object SurfaceRegistry {
-  private val views = HashMap<String, WeakReference<AuVideoSurfaceView>>()
+  private val views = HashMap<String, WeakReference<VideoSurfaceView>>()
 
-  fun register(surfaceId: String, view: AuVideoSurfaceView) {
+  fun register(surfaceId: String, view: VideoSurfaceView) {
     views[surfaceId] = WeakReference(view)
     PlayerCore.onSurfaceAvailable(surfaceId, view)
   }
 
-  fun unregister(surfaceId: String, view: AuVideoSurfaceView) {
+  fun unregister(surfaceId: String, view: VideoSurfaceView) {
     val registered = views[surfaceId]?.get()
     if (registered == null || registered === view) {
       views.remove(surfaceId)
@@ -22,5 +22,5 @@ object SurfaceRegistry {
     }
   }
 
-  fun get(surfaceId: String): AuVideoSurfaceView? = views[surfaceId]?.get()
+  fun get(surfaceId: String): VideoSurfaceView? = views[surfaceId]?.get()
 }

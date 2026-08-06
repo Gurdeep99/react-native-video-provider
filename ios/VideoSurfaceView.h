@@ -8,7 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
  * itself in the surface registry under its surfaceId prop; the singleton
  * player's host view gets re-parented into it by the core.
  */
-@interface AuVideoSurfaceView : RCTViewComponentView
+@interface VideoSurfaceView : RCTViewComponentView
 
 @end
 

@@ -1,8 +1,8 @@
-import NativeAuVideo from '../NativeAuVideo';
+import NativeVideo from '../NativeVideo';
 import { FULLSCREEN_SURFACE_ID, VideoManager } from '../core/VideoManager';
 import type { VideoSource } from '../types/video';
 
-jest.mock('../NativeAuVideo', () => ({
+jest.mock('../NativeVideo', () => ({
   __esModule: true,
   default: {
     nativeInit: jest.fn(),
@@ -40,7 +40,7 @@ jest.mock('../NativeAuVideo', () => ({
   },
 }));
 
-const native = NativeAuVideo as jest.Mocked<typeof NativeAuVideo>;
+const native = NativeVideo as jest.Mocked<typeof NativeVideo>;
 
 const video = (id: string): VideoSource => ({
   id,

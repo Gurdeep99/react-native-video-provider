@@ -127,18 +127,18 @@
     }
   },
   "codegenConfig": {
-    "name": "AuVideoSpec",
+    "name": "VideoSpec",
     "type": "all",
     "jsSrcsDir": "src",
     "android": {
-      "javaPackageName": "com.auvideo"
+      "javaPackageName": "com.video"
     },
     "ios": {
       "modulesProvider": {
-        "AuVideo": "AuVideo"
+        "Video": "Video"
       },
       "componentProvider": {
-        "AuVideoSurfaceView": "AuVideoSurfaceView"
+        "VideoSurfaceView": "VideoSurfaceView"
       }
     }
   },

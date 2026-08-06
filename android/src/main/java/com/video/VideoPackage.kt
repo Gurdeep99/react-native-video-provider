@@ -1,4 +1,4 @@
-package com.auvideo
+package com.video
 
 import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -7,10 +7,10 @@ import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
 import com.facebook.react.uimanager.ViewManager
 
-class AuVideoPackage : BaseReactPackage() {
+class VideoPackage : BaseReactPackage() {
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
-    return if (name == AuVideoModule.NAME) {
-      AuVideoModule(reactContext)
+    return if (name == VideoModule.NAME) {
+      VideoModule(reactContext)
     } else {
       null
     }
@@ -18,13 +18,13 @@ class AuVideoPackage : BaseReactPackage() {
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext
-  ): List<ViewManager<*, *>> = listOf(AuVideoSurfaceViewManager())
+  ): List<ViewManager<*, *>> = listOf(VideoSurfaceViewManager())
 
   override fun getReactModuleInfoProvider() = ReactModuleInfoProvider {
     mapOf(
-      AuVideoModule.NAME to ReactModuleInfo(
-        name = AuVideoModule.NAME,
-        className = AuVideoModule.NAME,
+      VideoModule.NAME to ReactModuleInfo(
+        name = VideoModule.NAME,
+        className = VideoModule.NAME,
         canOverrideExistingModule = false,
         needsEagerInit = false,
         isCxxModule = false,

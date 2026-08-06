@@ -11,11 +11,11 @@ import UIKit
 /// func application(_ application: UIApplication,
 ///                  supportedInterfaceOrientationsFor window: UIWindow?)
 ///     -> UIInterfaceOrientationMask {
-///   return AuVideoOrientation.mask(withDefault: .portrait)
+///   return VideoOrientation.mask(withDefault: .portrait)
 /// }
 /// ```
-@objc(AuVideoOrientation)
-public final class AuVideoOrientation: NSObject {
+@objc(VideoOrientation)
+public final class VideoOrientation: NSObject {
 
   @objc public private(set) static var isFullscreenActive = false
 

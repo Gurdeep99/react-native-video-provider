@@ -1,5 +1,5 @@
 import type { EventSubscription } from 'react-native';
-import NativeAuVideo, { type NativeVideoSource } from '../NativeAuVideo';
+import NativeVideo, { type NativeVideoSource } from '../NativeVideo';
 import {
   createVideoStore,
   initialVideoState,
@@ -172,7 +172,7 @@ export class VideoManager {
       return;
     }
     this.initialized = true;
-    NativeAuVideo.nativeInit();
+    NativeVideo.nativeInit();
     this.subscribeNative();
     this.setupNetInfo();
     this.setupAppState();
@@ -238,12 +238,12 @@ export class VideoManager {
     const subs = this.nativeSubscriptions;
 
     subs.push(
-      NativeAuVideo.onStatusChange((e) => {
+      NativeVideo.onStatusChange((e) => {
         this.applyStatus(e.status as PlaybackStatus);
       })
     );
     subs.push(
-      NativeAuVideo.onLoad((e) => {
+      NativeVideo.onLoad((e) => {
         this.set({
           duration: e.duration,
           videoWidth: e.width,
@@ -257,7 +257,7 @@ export class VideoManager {
       })
     );
     subs.push(
-      NativeAuVideo.onProgress((e) => {
+      NativeVideo.onProgress((e) => {
         // Drop ticks that arrive while a new source is still loading: they
         // describe the outgoing video. Both engines gate this natively too,
         // but this keeps a stale position off the seekbar whichever path
@@ -274,13 +274,13 @@ export class VideoManager {
       })
     );
     subs.push(
-      NativeAuVideo.onSeek((e) => {
+      NativeVideo.onSeek((e) => {
         this.set({ position: e.position });
         this.events.emit('onSeek', e);
       })
     );
     subs.push(
-      NativeAuVideo.onEnd(() => {
+      NativeVideo.onEnd(() => {
         this.applyStatus('ended');
         this.events.emit('onEnd', undefined);
         // A live stream shouldn't "end" — the feed dropped; try again.
@@ -290,19 +290,19 @@ export class VideoManager {
       })
     );
     subs.push(
-      NativeAuVideo.onError((e) => {
+      NativeVideo.onError((e) => {
         this.set({ error: e, status: 'error', playing: false, loading: false });
         this.events.emit('onError', e);
         this.maybeRetryLive(e);
       })
     );
     subs.push(
-      NativeAuVideo.onAttach((e) => {
+      NativeVideo.onAttach((e) => {
         this.events.emit('onAttach', e);
       })
     );
     subs.push(
-      NativeAuVideo.onDetach((e) => {
+      NativeVideo.onDetach((e) => {
         this.events.emit('onDetach', e);
         if (this.config.pauseOnDetach) {
           this.pause();
@@ -310,14 +310,14 @@ export class VideoManager {
       })
     );
     subs.push(
-      NativeAuVideo.onPipChange((e) => {
+      NativeVideo.onPipChange((e) => {
         this.set({ pip: e.active });
         this.setMode(e.active ? 'pip' : this.deriveMode({ pip: false }));
         this.events.emit('onPipChanged', e);
       })
     );
     subs.push(
-      NativeAuVideo.onLiveChange((e) => {
+      NativeVideo.onLiveChange((e) => {
         // The engine detected live-ness itself, so retry works even when the
         // app never called setLive(). An explicit setLive() still wins — see
         // liveExplicit.
@@ -390,7 +390,7 @@ export class VideoManager {
       });
       // Both engines (native player / native WebView) live behind the same
       // TurboModule; the native side dispatches by source.type.
-      NativeAuVideo.setSource(toNativeSource(source), autoplay);
+      NativeVideo.setSource(toNativeSource(source), autoplay);
       this.events.emit('onVideoChanged', { video: source });
     } else if (autoplay && !this.store.getState().playing) {
       this.play();
@@ -403,21 +403,21 @@ export class VideoManager {
 
   /** Warm a source without rendering or touching current playback. */
   preload(source: VideoSource): void {
-    NativeAuVideo.preload(toNativeSource(source));
+    NativeVideo.preload(toNativeSource(source));
   }
 
   play(): void {
     // An explicit play clears the "viewer paused this" latch, so focus-resume
     // is allowed again.
     this.userPaused = false;
-    NativeAuVideo.play();
+    NativeVideo.play();
   }
 
   pause(): void {
     // Latch the intent so regaining focus doesn't restart what was paused
     // deliberately. Cleared by play() or by loading a new source.
     this.userPaused = true;
-    NativeAuVideo.pause();
+    NativeVideo.pause();
   }
 
   resume(): void {
@@ -434,7 +434,7 @@ export class VideoManager {
 
   stop(): void {
     this.clearLiveRetry();
-    NativeAuVideo.stop();
+    NativeVideo.stop();
     this.set({ position: 0, playing: false, status: 'idle' });
   }
 
@@ -446,7 +446,7 @@ export class VideoManager {
       duration > 0 ? Math.min(position, duration) : position
     );
     this.set({ position: clamped });
-    NativeAuVideo.seekTo(clamped);
+    NativeVideo.seekTo(clamped);
   }
 
   seekBy(offset: number): void {
@@ -455,33 +455,33 @@ export class VideoManager {
 
   setRate(rate: number): void {
     this.set({ rate });
-    NativeAuVideo.setRate(rate);
+    NativeVideo.setRate(rate);
   }
 
   setVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(volume, 1));
     this.set({ volume: clamped });
-    NativeAuVideo.setVolume(clamped);
+    NativeVideo.setVolume(clamped);
   }
 
   mute(): void {
     this.set({ muted: true });
-    NativeAuVideo.setMuted(true);
+    NativeVideo.setMuted(true);
   }
 
   unmute(): void {
     this.set({ muted: false });
-    NativeAuVideo.setMuted(false);
+    NativeVideo.setMuted(false);
   }
 
   setRepeat(repeat: boolean): void {
     this.set({ repeat });
-    NativeAuVideo.setRepeat(repeat);
+    NativeVideo.setRepeat(repeat);
   }
 
   setResizeMode(mode: ResizeMode): void {
     this.set({ resizeMode: mode });
-    NativeAuVideo.setResizeMode(mode);
+    NativeVideo.setResizeMode(mode);
   }
 
   /**
@@ -535,7 +535,7 @@ export class VideoManager {
       return;
     }
     this.set({ status: 'loading', loading: true, error: null });
-    NativeAuVideo.reload();
+    NativeVideo.reload();
   }
 
   // ------------------------------------------------------ live retry
@@ -597,7 +597,7 @@ export class VideoManager {
    */
   setOrientation(lock: OrientationLock): void {
     this.set({ orientationLock: lock });
-    NativeAuVideo.setOrientation(lock);
+    NativeVideo.setOrientation(lock);
   }
 
   /**
@@ -612,7 +612,7 @@ export class VideoManager {
   }
 
   async getPosition(): Promise<number> {
-    return NativeAuVideo.getPosition();
+    return NativeVideo.getPosition();
   }
 
   // -------------------------------------------------------------- surfaces
@@ -624,7 +624,7 @@ export class VideoManager {
     }
     this.set({ surfaceId });
     this.setMode(this.deriveMode({}));
-    NativeAuVideo.attach(surfaceId);
+    NativeVideo.attach(surfaceId);
     // Coming back into view counts as regaining focus.
     this.resumeOnFocus();
   }
@@ -648,14 +648,14 @@ export class VideoManager {
     if (!s.currentVideo || s.playing) {
       return;
     }
-    NativeAuVideo.play();
+    NativeVideo.play();
   }
 
   /** Detach from any surface. Playback continues (audio) unless configured otherwise. */
   detach(): void {
     this.set({ surfaceId: null });
     this.setMode('hidden');
-    NativeAuVideo.detach();
+    NativeVideo.detach();
   }
 
   /**
@@ -711,7 +711,7 @@ export class VideoManager {
     // re-rotate an already-presented modal.
     this.set({ fullscreen: true, floating: false, fullscreenLock: lock });
     this.setMode('fullscreen');
-    NativeAuVideo.enterFullscreen(lock);
+    NativeVideo.enterFullscreen(lock);
     this.events.emit('onEnterFullscreen', undefined);
   }
 
@@ -723,7 +723,7 @@ export class VideoManager {
     // Always restore the standing lock (or 'auto' if none) — a
     // fullscreen-scoped override was never written to state, so this
     // naturally drops it without needing to track whether one was applied.
-    NativeAuVideo.exitFullscreen(this.store.getState().orientationLock);
+    NativeVideo.exitFullscreen(this.store.getState().orientationLock);
     this.set({ fullscreen: false, fullscreenLock: 'auto' });
     this.events.emit('onExitFullscreen', undefined);
     this.restoreInlineSurface();
@@ -754,11 +754,11 @@ export class VideoManager {
   }
 
   async enterPiP(): Promise<boolean> {
-    return NativeAuVideo.enterPip();
+    return NativeVideo.enterPip();
   }
 
   exitPiP(): void {
-    NativeAuVideo.exitPip();
+    NativeVideo.exitPip();
   }
 
   private restoreInlineSurface(): void {
@@ -803,8 +803,8 @@ export class VideoManager {
     this.initialized = false;
     this.lastInlineSurfaceId = null;
     this.fullscreenOrientationDefault = null;
-    NativeAuVideo.setOrientation('auto');
-    NativeAuVideo.releasePlayer();
+    NativeVideo.setOrientation('auto');
+    NativeVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);
   }
 

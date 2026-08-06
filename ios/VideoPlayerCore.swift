@@ -4,8 +4,8 @@ import Foundation
 import UIKit
 import WebKit
 
-@objc(AuVideoSourceSpec)
-public final class AuVideoSourceSpec: NSObject {
+@objc(VideoSourceSpec)
+public final class VideoSourceSpec: NSObject {
   @objc public let videoId: String
   @objc public let uri: String
   /// "url" (AVPlayer) or "youtube" (WKWebView engine).
@@ -37,8 +37,8 @@ public final class AuVideoSourceSpec: NSObject {
   }
 }
 
-@objc(AuVideoCoreDelegate)
-public protocol AuVideoCoreDelegate: AnyObject {
+@objc(VideoCoreDelegate)
+public protocol VideoCoreDelegate: AnyObject {
   func onStatusChange(_ status: String)
   func onLoad(_ videoId: String, duration: Double, width: Double, height: Double)
   func onProgress(_ position: Double, duration: Double, buffered: Double)
@@ -54,8 +54,8 @@ public protocol AuVideoCoreDelegate: AnyObject {
 
 /// UIView whose backing layer is the AVPlayerLayer. Moving this view between
 /// surface containers re-parents rendering without touching playback.
-@objc(AuVideoHostView)
-public final class AuVideoHostView: UIView {
+@objc(VideoHostView)
+public final class VideoHostView: UIView {
   public override static var layerClass: AnyClass { AVPlayerLayer.self }
   public var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }
@@ -63,15 +63,15 @@ public final class AuVideoHostView: UIView {
 /// The ONE playback engine of the app: a single AVPlayer plus a single host
 /// view, re-parented between registered surfaces. Created once, never owned
 /// by React components; destroyed only by an explicit releasePlayer().
-@objc(AuVideoPlayerCore)
-public final class AuVideoPlayerCore: NSObject {
+@objc(VideoPlayerCore)
+public final class VideoPlayerCore: NSObject {
 
-  @objc public static let shared = AuVideoPlayerCore()
+  @objc public static let shared = VideoPlayerCore()
 
-  @objc public weak var delegate: AuVideoCoreDelegate?
+  @objc public weak var delegate: VideoCoreDelegate?
 
   private let player = AVPlayer()
-  private let hostView = AuVideoHostView()
+  private let hostView = VideoHostView()
 
   // Second engine: a re-parentable WKWebView running the YouTube IFrame API.
   private enum Engine { case exo, web }
@@ -102,7 +102,7 @@ public final class AuVideoPlayerCore: NSObject {
     let config = WKWebViewConfiguration()
     config.allowsInlineMediaPlayback = true
     config.mediaTypesRequiringUserActionForPlayback = []
-    config.userContentController.add(self, name: "AuBridge")
+    config.userContentController.add(self, name: "VideoBridge")
     let wv = WKWebView(frame: .zero, configuration: config)
     wv.scrollView.isScrollEnabled = false
     wv.isOpaque = false
@@ -122,7 +122,7 @@ public final class AuVideoPlayerCore: NSObject {
     webLoaded = false
     webWarming = false
     dead?.configuration.userContentController
-      .removeScriptMessageHandler(forName: "AuBridge")
+      .removeScriptMessageHandler(forName: "VideoBridge")
     dead?.removeFromSuperview()
 
     guard engine == .web, let id = currentVideoId else { return }
@@ -132,7 +132,7 @@ public final class AuVideoPlayerCore: NSObject {
     // shortcut into the WebView we just discarded.
     currentVideoId = nil
     setYouTube(
-      AuVideoSourceSpec(
+      VideoSourceSpec(
         videoId: id,
         uri: id,
         type: "youtube",
@@ -165,7 +165,7 @@ public final class AuVideoPlayerCore: NSObject {
   /// Last live-ness reported to JS, so we only emit on change.
   private var reportedLive: Bool?
   /// Retained so a failed item can be rebuilt from the same source.
-  private var currentSource: AuVideoSourceSpec?
+  private var currentSource: VideoSourceSpec?
 
   private var timeObserver: Any?
   private var timeControlObservation: NSKeyValueObservation?
@@ -259,7 +259,7 @@ public final class AuVideoPlayerCore: NSObject {
     detach()
     player.replaceCurrentItem(with: nil)
     if let wv = webView {
-      wv.configuration.userContentController.removeScriptMessageHandler(forName: "AuBridge")
+      wv.configuration.userContentController.removeScriptMessageHandler(forName: "VideoBridge")
       wv.removeFromSuperview()
       wv.loadHTMLString("", baseURL: nil)
       webView = nil
@@ -276,7 +276,7 @@ public final class AuVideoPlayerCore: NSObject {
 
   // --------------------------------------------------------------- source
 
-  @objc public func setSource(_ source: AuVideoSourceSpec, autoplay: Bool) {
+  @objc public func setSource(_ source: VideoSourceSpec, autoplay: Bool) {
     initialize()
 
     if source.type == "youtube" {
@@ -319,7 +319,7 @@ public final class AuVideoPlayerCore: NSObject {
     }
   }
 
-  @objc public func preload(_ source: AuVideoSourceSpec) {
+  @objc public func preload(_ source: VideoSourceSpec) {
     if source.type == "youtube" {
       warmYouTube(source)
       return
@@ -336,7 +336,7 @@ public final class AuVideoPlayerCore: NSObject {
   ///
   /// Deliberately invisible: it must not switch the active engine, claim
   /// currentVideoId, or emit events, or it would interrupt what's playing.
-  private func warmYouTube(_ source: AuVideoSourceSpec) {
+  private func warmYouTube(_ source: VideoSourceSpec) {
     if webLoaded || webWarming { return }
     let wv = ensureWebView()
     webWarming = true
@@ -347,7 +347,7 @@ public final class AuVideoPlayerCore: NSObject {
     wv.loadHTMLString(html, baseURL: URL(string: "https://youtube.com"))
   }
 
-  private func makeItem(_ source: AuVideoSourceSpec) -> AVPlayerItem {
+  private func makeItem(_ source: VideoSourceSpec) -> AVPlayerItem {
     let url = URL(string: source.uri) ?? URL(fileURLWithPath: source.uri)
     var options: [String: Any] = [:]
     if !source.headers.isEmpty {
@@ -419,7 +419,7 @@ public final class AuVideoPlayerCore: NSObject {
 
   // ----------------------------------------------------------- youtube engine
 
-  private func setYouTube(_ source: AuVideoSourceSpec, autoplay: Bool) {
+  private func setYouTube(_ source: VideoSourceSpec, autoplay: Bool) {
     if engine == .exo { player.pause() }
     engine = .web
 
@@ -500,7 +500,7 @@ public final class AuVideoPlayerCore: NSObject {
   /// Re-parent the active engine's view into the current surface (engine swap).
   private func reAttachActive() {
     guard let id = currentSurfaceId,
-          let container = AuVideoSurfaceRegistry.view(for: id) else { return }
+          let container = VideoSurfaceRegistry.view(for: id) else { return }
     attachTo(container, surfaceId: id)
   }
 
@@ -585,7 +585,7 @@ public final class AuVideoPlayerCore: NSObject {
     var tries=0;
     var cur='\(videoId)';
     var tok=\(token);
-    function post(m){try{window.webkit.messageHandlers.AuBridge.postMessage(JSON.stringify(m));}catch(e){}}
+    function post(m){try{window.webkit.messageHandlers.VideoBridge.postMessage(JSON.stringify(m));}catch(e){}}
     // WebViews routinely ignore the autoplay playerVar, leaving the player
     // "unstarted" (which also shows YouTube's big play button). Nudge it until
     // it actually reaches playing/buffering.
@@ -752,7 +752,7 @@ public final class AuVideoPlayerCore: NSObject {
 
   @objc public func attach(_ surfaceId: String) {
     initialize()
-    guard let container = AuVideoSurfaceRegistry.view(for: surfaceId) else {
+    guard let container = VideoSurfaceRegistry.view(for: surfaceId) else {
       // Screen still mounting — attach the moment it registers.
       pendingSurfaceId = surfaceId
       return
@@ -958,19 +958,19 @@ public final class AuVideoPlayerCore: NSObject {
   }
 }
 
-extension AuVideoPlayerCore: WKScriptMessageHandler {
+extension VideoPlayerCore: WKScriptMessageHandler {
   public func userContentController(
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) {
-    guard message.name == "AuBridge", let body = message.body as? String else {
+    guard message.name == "VideoBridge", let body = message.body as? String else {
       return
     }
     handleWebMessage(body)
   }
 }
 
-extension AuVideoPlayerCore: WKNavigationDelegate {
+extension VideoPlayerCore: WKNavigationDelegate {
   /// iOS jettisons the web content process under memory pressure; without
   /// this the YouTube player goes permanently blank with no error.
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -986,7 +986,7 @@ extension AuVideoPlayerCore: WKNavigationDelegate {
   }
 }
 
-extension AuVideoPlayerCore: AVPictureInPictureControllerDelegate {
+extension VideoPlayerCore: AVPictureInPictureControllerDelegate {
   public func pictureInPictureControllerDidStartPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {

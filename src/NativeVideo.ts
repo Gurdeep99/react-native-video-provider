@@ -137,4 +137,4 @@ export interface Spec extends TurboModule {
   readonly onLiveChange: EventEmitter<NativeLiveEvent>;
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('AuVideo');
+export default TurboModuleRegistry.getEnforcing<Spec>('Video');

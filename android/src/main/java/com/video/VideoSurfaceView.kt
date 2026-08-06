@@ -1,4 +1,4 @@
-package com.auvideo
+package com.video
 
 import android.content.Context
 import android.view.View
@@ -8,7 +8,7 @@ import android.widget.FrameLayout
  * A dumb mount point the player view gets re-parented into. Does not create
  * or own any player resources.
  */
-class AuVideoSurfaceView(context: Context) : FrameLayout(context) {
+class VideoSurfaceView(context: Context) : FrameLayout(context) {
 
   var surfaceId: String? = null
     set(value) {

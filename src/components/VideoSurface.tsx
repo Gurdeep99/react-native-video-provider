@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { ViewProps } from 'react-native';
-import AuVideoSurfaceNativeComponent from '../AuVideoSurfaceNativeComponent';
+import VideoSurfaceNativeComponent from '../VideoSurfaceNativeComponent';
 import { useVideoManager } from '../provider/VideoContext';
 
 export interface VideoSurfaceProps extends ViewProps {
@@ -35,5 +35,5 @@ export function VideoSurface({
     };
   }, [manager, surfaceId, autoAttach]);
 
-  return <AuVideoSurfaceNativeComponent surfaceId={surfaceId} {...rest} />;
+  return <VideoSurfaceNativeComponent surfaceId={surfaceId} {...rest} />;
 }

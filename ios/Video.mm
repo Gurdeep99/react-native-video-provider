@@ -1,20 +1,20 @@
-#import "AuVideo.h"
+#import "Video.h"
 
 #import <AVKit/AVKit.h>
-// WebKit must be imported before AuVideo-Swift.h: the generated header declares
+// WebKit must be imported before Video-Swift.h: the generated header declares
 // a WKScriptMessageHandler conformance but only forward-declares WK classes, and
 // its own `@import WebKit` is skipped when Clang modules are off (RN default).
 #import <WebKit/WebKit.h>
 
-#if __has_include(<AuVideo/AuVideo-Swift.h>)
-#import <AuVideo/AuVideo-Swift.h>
+#if __has_include(<Video/Video-Swift.h>)
+#import <Video/Video-Swift.h>
 #else
-#import "AuVideo-Swift.h"
+#import "Video-Swift.h"
 #endif
 
-using JS::NativeAuVideo::NativeVideoSource;
+using JS::NativeVideo::NativeVideoSource;
 
-static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
+static VideoSourceSpec *VideoParseSource(NativeVideoSource &source)
 {
   NSMutableDictionary<NSString *, NSString *> *headers = [NSMutableDictionary new];
   if ([source.headers() isKindOfClass:[NSDictionary class]]) {
@@ -26,7 +26,7 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
         }];
   }
   NSString *type = source.type() ?: @"url";
-  return [[AuVideoSourceSpec alloc] initWithVideoId:source.id_()
+  return [[VideoSourceSpec alloc] initWithVideoId:source.id_()
                                                 uri:source.uri()
                                                type:type
                                             headers:headers
@@ -36,20 +36,20 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
                                       startPosition:source.startPosition().value_or(0)];
 }
 
-@interface AuVideo () <AuVideoCoreDelegate>
+@interface Video () <VideoCoreDelegate>
 @end
 
-@implementation AuVideo
+@implementation Video
 
 + (NSString *)moduleName
 {
-  return @"AuVideo";
+  return @"Video";
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
     (const facebook::react::ObjCTurboModule::InitParams &)params
 {
-  return std::make_shared<facebook::react::NativeAuVideoSpecJSI>(params);
+  return std::make_shared<facebook::react::NativeVideoSpecJSI>(params);
 }
 
 #pragma mark - Lifecycle
@@ -57,15 +57,15 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
 - (void)nativeInit
 {
   dispatch_async(dispatch_get_main_queue(), ^{
-    AuVideoPlayerCore.shared.delegate = self;
-    [AuVideoPlayerCore.shared initialize];
+    VideoPlayerCore.shared.delegate = self;
+    [VideoPlayerCore.shared initialize];
   });
 }
 
 - (void)releasePlayer
 {
   dispatch_async(dispatch_get_main_queue(), ^{
-    [AuVideoPlayerCore.shared releasePlayer];
+    [VideoPlayerCore.shared releasePlayer];
   });
 }
 
@@ -73,76 +73,76 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
 
 - (void)setSource:(NativeVideoSource &)source autoplay:(BOOL)autoplay
 {
-  AuVideoSourceSpec *spec = AuVideoParseSource(source);
+  VideoSourceSpec *spec = VideoParseSource(source);
   dispatch_async(dispatch_get_main_queue(), ^{
-    [AuVideoPlayerCore.shared setSource:spec autoplay:autoplay];
+    [VideoPlayerCore.shared setSource:spec autoplay:autoplay];
   });
 }
 
 - (void)preload:(NativeVideoSource &)source
 {
-  AuVideoSourceSpec *spec = AuVideoParseSource(source);
+  VideoSourceSpec *spec = VideoParseSource(source);
   dispatch_async(dispatch_get_main_queue(), ^{
-    [AuVideoPlayerCore.shared preload:spec];
+    [VideoPlayerCore.shared preload:spec];
   });
 }
 
 - (void)reload
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared reload]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared reload]; });
 }
 
 #pragma mark - Commands
 
 - (void)play
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared play]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared play]; });
 }
 
 - (void)pause
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared pause]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared pause]; });
 }
 
 - (void)stop
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared stop]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared stop]; });
 }
 
 - (void)seekTo:(double)position
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared seekTo:position]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared seekTo:position]; });
 }
 
 - (void)setRate:(double)rate
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared setRate:rate]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared setRate:rate]; });
 }
 
 - (void)setVolume:(double)volume
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared setVolume:volume]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared setVolume:volume]; });
 }
 
 - (void)setMuted:(BOOL)muted
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared setMuted:muted]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared setMuted:muted]; });
 }
 
 - (void)setRepeat:(BOOL)repeat
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared setRepeat:repeat]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared setRepeat:repeat]; });
 }
 
 - (void)setResizeMode:(NSString *)mode
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared setResizeMode:mode]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared setResizeMode:mode]; });
 }
 
 - (void)getPosition:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   dispatch_async(dispatch_get_main_queue(), ^{
-    resolve(@([AuVideoPlayerCore.shared positionSeconds]));
+    resolve(@([VideoPlayerCore.shared positionSeconds]));
   });
 }
 
@@ -150,29 +150,29 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
 
 - (void)attach:(NSString *)surfaceId
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared attach:surfaceId]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared attach:surfaceId]; });
 }
 
 - (void)detach
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared detach]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared detach]; });
 }
 
 #pragma mark - Fullscreen
 
 - (void)enterFullscreen:(NSString *)orientation
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation enterFullscreen:orientation]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoOrientation enterFullscreen:orientation]; });
 }
 
 - (void)exitFullscreen:(NSString *)orientation
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation exitFullscreen:orientation]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoOrientation exitFullscreen:orientation]; });
 }
 
 - (void)setOrientation:(NSString *)orientation
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoOrientation setOrientation:orientation]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoOrientation setOrientation:orientation]; });
 }
 
 #pragma mark - PiP
@@ -180,16 +180,16 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
 - (void)enterPip:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   dispatch_async(dispatch_get_main_queue(), ^{
-    resolve(@([AuVideoPlayerCore.shared enterPip]));
+    resolve(@([VideoPlayerCore.shared enterPip]));
   });
 }
 
 - (void)exitPip
 {
-  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared exitPip]; });
+  dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared exitPip]; });
 }
 
-#pragma mark - AuVideoCoreDelegate
+#pragma mark - VideoCoreDelegate
 
 - (void)onStatusChange:(NSString *)status
 {

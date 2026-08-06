@@ -1,10 +1,10 @@
-#import <AuVideoSpec/AuVideoSpec.h>
+#import <VideoSpec/VideoSpec.h>
 
 /**
  * TurboModule glue. All real playback logic lives in the Swift core
- * (AuVideoPlayerCore); this class marshals calls onto the main thread and
+ * (VideoPlayerCore); this class marshals calls onto the main thread and
  * forwards engine events to JS via the codegen emitters.
  */
-@interface AuVideo : NativeAuVideoSpecBase <NativeAuVideoSpec>
+@interface Video : NativeVideoSpecBase <NativeVideoSpec>
 
 @end

@@ -1,4 +1,4 @@
-package com.auvideo
+package com.video
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -43,7 +43,7 @@ data class SourceSpec(
  * The ONE playback engine of the app.
  *
  * Owns a single ExoPlayer and a single TextureView-backed PlayerView that is
- * re-parented between registered [AuVideoSurfaceView]s. Created lazily on
+ * re-parented between registered [VideoSurfaceView]s. Created lazily on
  * first init and only destroyed by an explicit release() — React component
  * lifecycles never touch it.
  *
@@ -156,7 +156,7 @@ object PlayerCore {
 
     // Inflated from XML because surface_type can only be set via attrs.
     val view = LayoutInflater.from(context.applicationContext)
-      .inflate(R.layout.au_video_player_view, null) as PlayerView
+      .inflate(R.layout.video_player_view, null) as PlayerView
     view.player = exo
     playerView = view
   }
@@ -266,7 +266,7 @@ object PlayerCore {
           mainHandler.post { handleWebMessage(data) }
         }
       },
-      "AuBridge"
+      "VideoBridge"
     )
     wv.webViewClient = object : WebViewClient() {
       /**
@@ -482,7 +482,7 @@ var player;
 var tries=0;
 var cur='$videoId';
 var tok=$token;
-function post(m){try{AuBridge.postMessage(JSON.stringify(m))}catch(e){}}
+function post(m){try{VideoBridge.postMessage(JSON.stringify(m))}catch(e){}}
 // WebViews routinely ignore the autoplay playerVar, leaving the player
 // "unstarted" (which also shows YouTube's big play button). Nudge it until
 // it actually reaches playing/buffering.
@@ -763,7 +763,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     pendingSurfaceId = null
   }
 
-  fun onSurfaceAvailable(surfaceId: String, view: AuVideoSurfaceView) {
+  fun onSurfaceAvailable(surfaceId: String, view: VideoSurfaceView) {
     // Also re-attach when the active surface's view was recreated (e.g.
     // navigating back to a screen that Fabric re-materialized).
     if (surfaceId == pendingSurfaceId || surfaceId == currentSurfaceId) {
@@ -771,7 +771,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     }
   }
 
-  fun onSurfaceUnavailable(surfaceId: String, view: AuVideoSurfaceView) {
+  fun onSurfaceUnavailable(surfaceId: String, view: VideoSurfaceView) {
     val active = activeView() ?: return
     if (currentSurfaceId == surfaceId && active.parent === view) {
       view.removeView(active)
@@ -782,7 +782,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     }
   }
 
-  private fun attachTo(container: AuVideoSurfaceView, surfaceId: String) {
+  private fun attachTo(container: VideoSurfaceView, surfaceId: String) {
     val view = activeView() ?: return
     if (currentSurfaceId == surfaceId && view.parent === container) {
       pendingSurfaceId = null
@@ -818,7 +818,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
   private fun reassertVideoOutput(
     pv: PlayerView,
     surfaceId: String,
-    container: AuVideoSurfaceView,
+    container: VideoSurfaceView,
   ) {
     mainHandler.post {
       if (currentSurfaceId == surfaceId && pv.parent === container) {

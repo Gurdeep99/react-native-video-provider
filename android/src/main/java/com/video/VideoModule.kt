@@ -1,4 +1,4 @@
-package com.auvideo
+package com.video
 
 import android.app.Activity
 import android.app.PictureInPictureParams
@@ -15,8 +15,8 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.UiThreadUtil
 
-class AuVideoModule(reactContext: ReactApplicationContext) :
-  NativeAuVideoSpec(reactContext), PlayerCore.Listener {
+class VideoModule(reactContext: ReactApplicationContext) :
+  NativeVideoSpec(reactContext), PlayerCore.Listener {
 
   /** The app's own requestedOrientation, saved before we first override it. */
   private var previousOrientation: Int? = null
@@ -311,6 +311,6 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
   }
 
   companion object {
-    const val NAME = NativeAuVideoSpec.NAME
+    const val NAME = NativeVideoSpec.NAME
   }
 }
