@@ -8,6 +8,7 @@ jest.mock('../NativeAuVideo', () => ({
     nativeInit: jest.fn(),
     setSource: jest.fn(),
     preload: jest.fn(),
+    reload: jest.fn(),
     play: jest.fn(),
     pause: jest.fn(),
     stop: jest.fn(),
@@ -259,6 +260,63 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('live badge + reload', () => {
+    it('keeps the badge registered across live/not-live transitions', () => {
+      const icon = () => null;
+      manager.setLiveIcon(icon);
+      manager.setLive(true);
+      expect(manager.store.getState().liveIcon).toBe(icon);
+
+      // A bare setLive(false) must not unregister the badge — that is what
+      // made it disappear after an unmount/remount.
+      manager.setLive(false);
+      expect(manager.store.getState().liveIcon).toBe(icon);
+
+      manager.setLive(true);
+      expect(manager.store.getState().liveIcon).toBe(icon);
+    });
+
+    it('keeps the badge registered across a source change', () => {
+      const icon = () => null;
+      manager.setLiveIcon(icon);
+      manager.setSource(video('a'));
+      manager.setSource(video('b'));
+      expect(manager.store.getState().liveIcon).toBe(icon);
+    });
+
+    it('reload rebuilds natively instead of re-issuing setSource', () => {
+      manager.setSource(video('liveA'));
+      native.setSource.mockClear();
+
+      manager.reload();
+
+      // setSource would hit the same-id handoff and only call play(), which
+      // can't revive a failed item or a dead WebView page.
+      expect(native.setSource).not.toHaveBeenCalled();
+      expect(native.reload).toHaveBeenCalledTimes(1);
+      expect(manager.store.getState().loading).toBe(true);
+    });
+
+    it('a live retry after an error goes through the native reload', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+      native.reload.mockClear();
+
+      const onError = native.onError.mock.calls.at(-1)?.[0] as (e: {
+        code: string;
+        message: string;
+      }) => void;
+      onError({ code: 'io', message: 'network lost' });
+
+      jest.advanceTimersByTime(1000);
+      expect(native.reload).toHaveBeenCalledTimes(1);
+      // Live-ness must survive the outage, or the seek bar would appear.
+      expect(manager.store.getState().live).toBe(true);
+      jest.useRealTimers();
+    });
+  });
+
   describe('resume on focus', () => {
     it('resumes an autoplay source when it attaches back into view', () => {
       manager.setSource(video('yt1'), { autoplay: true });
@@ -373,34 +431,34 @@ describe('VideoManager', () => {
     it('retries a live source after a backoff when its feed errors', () => {
       manager.setSource(video('live1'));
       manager.setLive(true);
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       fireError();
-      expect(native.setSource).not.toHaveBeenCalled(); // not immediate
+      expect(native.reload).not.toHaveBeenCalled(); // not immediate
 
       jest.advanceTimersByTime(1000);
-      expect(native.setSource).toHaveBeenCalledTimes(1); // reload
+      expect(native.reload).toHaveBeenCalledTimes(1);
       expect(manager.store.getState().status).toBe('loading');
     });
 
     it('does NOT retry a non-live source on error', () => {
       manager.setSource(video('vod1'));
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       fireError();
       jest.advanceTimersByTime(30000);
-      expect(native.setSource).not.toHaveBeenCalled();
+      expect(native.reload).not.toHaveBeenCalled();
     });
 
     it('stops retrying once the source is no longer live', () => {
       manager.setSource(video('live1'));
       manager.setLive(true);
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       fireError();
       manager.setLive(false); // clears the scheduled retry
       jest.advanceTimersByTime(30000);
-      expect(native.setSource).not.toHaveBeenCalled();
+      expect(native.reload).not.toHaveBeenCalled();
     });
 
     const fireLive = (live: boolean) => {
@@ -421,23 +479,23 @@ describe('VideoManager', () => {
     it('retries a natively-detected live source without setLive()', () => {
       manager.setSource(video('live1'));
       fireLive(true); // engine reports an HLS live window / YouTube isLive
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       fireError();
       jest.advanceTimersByTime(1000);
-      expect(native.setSource).toHaveBeenCalledTimes(1);
+      expect(native.reload).toHaveBeenCalledTimes(1);
     });
 
     it('lets an explicit setLive() override native detection', () => {
       manager.setSource(video('vod1'));
       manager.setLive(false); // app insists this is not live
       fireLive(true); // native disagrees — explicit wins
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       expect(manager.store.getState().live).toBe(false);
       fireError();
       jest.advanceTimersByTime(30000);
-      expect(native.setSource).not.toHaveBeenCalled();
+      expect(native.reload).not.toHaveBeenCalled();
     });
 
     it('re-enables native detection when the source changes', () => {
@@ -452,21 +510,21 @@ describe('VideoManager', () => {
     it('does NOT retry a YouTube video that is gone or un-embeddable', () => {
       manager.setSource(video('live1'));
       manager.setLive(true);
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       fireErrorWith('youtube', '150'); // embedding disallowed — never recovers
       jest.advanceTimersByTime(30000);
-      expect(native.setSource).not.toHaveBeenCalled();
+      expect(native.reload).not.toHaveBeenCalled();
     });
 
     it('still retries a transient YouTube error', () => {
       manager.setSource(video('live1'));
       manager.setLive(true);
-      native.setSource.mockClear();
+      native.reload.mockClear();
 
       fireErrorWith('youtube', '5'); // transient HTML5 player fault
       jest.advanceTimersByTime(1000);
-      expect(native.setSource).toHaveBeenCalledTimes(1);
+      expect(native.reload).toHaveBeenCalledTimes(1);
     });
   });
 

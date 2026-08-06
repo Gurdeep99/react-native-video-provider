@@ -88,6 +88,13 @@ public final class AuVideoPlayerCore: NSObject {
   /// load) can still have a `ready` in flight; echoing this token lets us tell
   /// that stale message from the current page's.
   private var webLoadToken = 0
+
+  /// Audio settings live on the player, not the video, so they must be
+  /// re-applied to every fresh IFrame player. A newly created one always starts
+  /// unmuted at full volume — without this the mute button would read "muted"
+  /// while a newly loaded YouTube video played sound.
+  private var desiredMuted = false
+  private var desiredVolume: Double = 1
   private var webView: WKWebView?
 
   private func ensureWebView() -> WKWebView {
@@ -392,6 +399,24 @@ public final class AuVideoPlayerCore: NSObject {
     }
   }
 
+  /// Rebuild the current source from scratch.
+  ///
+  /// setSource() deliberately short-circuits when the id is unchanged (the
+  /// same-video handoff that preserves position across surface swaps), so it
+  /// cannot recover a player that has actually died — a failed AVPlayerItem is
+  /// terminal, and a YouTube page whose feed dropped won't restart on play().
+  /// Clearing the id (and, for YouTube, the loaded flag) forces the full load
+  /// path instead.
+  @objc public func reload() {
+    guard let source = currentSource else { return }
+    currentVideoId = nil
+    if source.type == "youtube" {
+      // Force a full page load rather than a loadVideoById into a dead page.
+      webLoaded = false
+    }
+    setSource(source, autoplay: true)
+  }
+
   // ----------------------------------------------------------- youtube engine
 
   private func setYouTube(_ source: AuVideoSourceSpec, autoplay: Bool) {
@@ -454,6 +479,13 @@ public final class AuVideoPlayerCore: NSObject {
       currentVideoId ?? "", duration: webDurationSec, width: 0, height: 0)
   }
 
+  /// Push the retained audio/rate settings onto a freshly loaded IFrame player.
+  private func applyWebPlayerSettings() {
+    webCmd("setVolume", [Int(desiredVolume * 100)])
+    webCmd(desiredMuted ? "mute" : "unMute")
+    if playbackRate != 1 { webCmd("setPlaybackRate", [playbackRate]) }
+  }
+
   /// Fire an IFrame-API command into the WebView (no-op unless WEB engine).
   private func webCmd(_ fn: String, _ args: [Any] = []) {
     guard engine == .web, let wv = webView else { return }
@@ -499,6 +531,9 @@ public final class AuVideoPlayerCore: NSObject {
       webDurationSec = (obj["duration"] as? Double) ?? 0
       reportWebLive(obj)
       reportWebLoadIfNeeded()
+      // Carry the player's audio/rate settings onto this new IFrame player,
+      // before any play() below so a muted player never leaks sound.
+      applyWebPlayerSettings()
       // Replay a play() that arrived while the player was still loading.
       if pendingWebPlay {
         pendingWebPlay = false
@@ -663,8 +698,10 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func setRate(_ rate: Double) {
-    if engine == .web { webCmd("setPlaybackRate", [rate]); return }
+    // Retained for both engines: the web path re-applies it to each new
+    // IFrame player, the native path on every play().
     playbackRate = rate
+    if engine == .web { webCmd("setPlaybackRate", [rate]); return }
     // Setting rate on a paused player starts playback; mirror ExoPlayer by
     // only applying immediately when already playing (play() re-applies it).
     if player.timeControlStatus == .playing {
@@ -676,14 +713,16 @@ public final class AuVideoPlayerCore: NSObject {
   }
 
   @objc public func setVolume(_ volume: Double) {
+    desiredVolume = min(max(volume, 0), 1)
     if engine == .web {
-      webCmd("setVolume", [Int(min(max(volume, 0), 1) * 100)])
+      webCmd("setVolume", [Int(desiredVolume * 100)])
       return
     }
     player.volume = Float(min(max(volume, 0), 1))
   }
 
   @objc public func setMuted(_ muted: Bool) {
+    desiredMuted = muted
     if engine == .web { webCmd(muted ? "mute" : "unMute"); return }
     player.isMuted = muted
   }

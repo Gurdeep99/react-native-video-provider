@@ -195,12 +195,36 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       }
     }, [manager, muted]);
 
+    // Keep the newest renderer reachable without making it an effect dep:
+    // `liveIcon` is typically an inline arrow, so its identity changes every
+    // render.
+    const liveIconRef = useRef(liveIcon);
     useEffect(() => {
-      // Publish live state + badge to the store so the built-in fullscreen
-      // host (which renders its own controls) shows them too.
-      manager.setLive(live, liveIcon ?? null);
-      return () => manager.setLive(false);
-    }, [manager, live, liveIcon]);
+      liveIconRef.current = liveIcon;
+    });
+
+    const hasLiveIcon = liveIcon != null;
+    useEffect(() => {
+      // Publish the badge to the store so the built-in fullscreen host (which
+      // renders its own controls) shows it too. Registering a stable wrapper
+      // keyed on *presence* rather than the prop itself means an ordinary
+      // re-render can't churn the registration.
+      manager.setLiveIcon(
+        hasLiveIcon ? () => liveIconRef.current?.() ?? null : null
+      );
+      return () => manager.setLiveIcon(null);
+    }, [manager, hasLiveIcon]);
+
+    useEffect(() => {
+      // Only pin live-ness when the prop was actually supplied. Calling
+      // setLive() unconditionally marked it app-controlled, which permanently
+      // suppressed the engine's own live detection — after a remount that left
+      // a YouTube live stream with no badge and a visible seek bar.
+      if (live === undefined) {
+        return;
+      }
+      manager.setLive(live);
+    }, [manager, live]);
 
     useEffect(() => {
       if (!orientation || orientation === 'auto') {

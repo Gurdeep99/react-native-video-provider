@@ -59,6 +59,10 @@ class AuVideoModule(reactContext: ReactApplicationContext) :
     UiThreadUtil.runOnUiThread { PlayerCore.preload(spec) }
   }
 
+  override fun reload() {
+    UiThreadUtil.runOnUiThread { PlayerCore.reload() }
+  }
+
   private fun parseSource(map: ReadableMap): SourceSpec? {
     val id = map.getString("id") ?: return null
     val uri = map.getString("uri") ?: return null

@@ -87,6 +87,11 @@ static AuVideoSourceSpec *AuVideoParseSource(NativeVideoSource &source)
   });
 }
 
+- (void)reload
+{
+  dispatch_async(dispatch_get_main_queue(), ^{ [AuVideoPlayerCore.shared reload]; });
+}
+
 #pragma mark - Commands
 
 - (void)play

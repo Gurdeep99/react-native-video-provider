@@ -73,6 +73,14 @@ export interface Spec extends TurboModule {
   /** Warm a source without rendering or interrupting current playback. */
   preload(source: NativeVideoSource): void;
 
+  /**
+   * Rebuild the current source from scratch — a new player item / a fresh
+   * YouTube page — bypassing the same-id handoff that `setSource` applies.
+   * Needed because a failed item or a dead WebView page cannot be revived by
+   * play() alone.
+   */
+  reload(): void;
+
   play(): void;
   pause(): void;
   stop(): void;

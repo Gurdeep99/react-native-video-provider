@@ -384,8 +384,9 @@ export class VideoManager {
         // Clear live-ness too, or a VOD loaded after a live stream keeps the
         // live styling (and hidden seekbar) until the engine re-reports. The
         // engine sets this again via onLiveChange once the new item is ready.
+        // `liveIcon` deliberately survives: it's a registration owned by the
+        // mounted player, not per-video state.
         live: false,
-        liveIcon: null,
       });
       // Both engines (native player / native WebView) live behind the same
       // TurboModule; the native side dispatches by source.type.
@@ -491,22 +492,50 @@ export class VideoManager {
    * indefinite duration, YouTube `isLive`) and sets this itself. Calling it
    * pins the value — native detection stops overriding it for this source.
    */
-  setLive(live: boolean, liveIcon: LiveIconRenderer | null = null): void {
+  setLive(live: boolean, liveIcon?: LiveIconRenderer | null): void {
     this.liveExplicit = true;
-    this.set({ live, liveIcon: live ? liveIcon : null });
+    this.set({ live });
+    // Only touch the badge when a renderer was actually passed. Clearing it on
+    // every `setLive(false)` is what made the badge vanish after a remount:
+    // the registration is presentational and outlives any one live/not-live
+    // transition. Use setLiveIcon() to manage it.
+    if (liveIcon !== undefined) {
+      this.set({ liveIcon });
+    }
     if (!live) {
       this.clearLiveRetry();
     }
   }
 
-  /** Re-attempt the current source (forces a reload even for the same id). */
+  /**
+   * Register the live badge renderer, independent of live-ness.
+   *
+   * Kept separate from `setLive` on purpose: the renderer is usually an inline
+   * arrow function, so its identity changes every render. Tying live state to
+   * that identity meant an unrelated re-render (a status change on network
+   * loss, say) could momentarily flip `live` false — revealing the seek bar on
+   * a live stream. Pass null to unregister.
+   */
+  setLiveIcon(liveIcon: LiveIconRenderer | null): void {
+    this.set({ liveIcon });
+  }
+
+  /**
+   * Re-attempt the current source from scratch.
+   *
+   * This must go through the native `reload()` rather than re-issuing
+   * `setSource`: setSource short-circuits when the id already matches (the
+   * same-video handoff that keeps position and buffer across surface changes),
+   * so it would only call play() on an already-dead player — a failed
+   * AVPlayerItem or an errored YouTube page never recovers from that, which is
+   * why a live stream came back to a black screen after the network returned.
+   */
   reload(): void {
-    const v = this.store.getState().currentVideo;
-    if (!v) {
+    if (!this.store.getState().currentVideo) {
       return;
     }
     this.set({ status: 'loading', loading: true, error: null });
-    NativeAuVideo.setSource(toNativeSource(v), true);
+    NativeAuVideo.reload();
   }
 
   // ------------------------------------------------------ live retry

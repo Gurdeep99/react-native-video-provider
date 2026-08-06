@@ -100,10 +100,22 @@ object PlayerCore {
    * that stale message from the current page's.
    */
   private var webLoadToken = 0
+
+  /**
+   * Audio/rate settings live on the player, not the video, so they must be
+   * re-applied to every fresh IFrame player. A newly created one always starts
+   * unmuted at full volume — without this the mute button would read "muted"
+   * while a newly loaded YouTube video played sound.
+   */
+  private var desiredMuted = false
+  private var desiredVolume = 1.0
+  private var desiredRate = 1.0
   private var webPositionSec = 0.0
   private var webDurationSec = 0.0
 
   private var currentVideoId: String? = null
+  /** Retained so reload() can rebuild the source without JS re-sending it. */
+  private var currentSource: SourceSpec? = null
   private var currentSurfaceId: String? = null
 
   /** Surface we want but that hasn't registered (yet, or again). */
@@ -173,6 +185,7 @@ object PlayerCore {
   // --------------------------------------------------------------- source
 
   fun setSource(source: SourceSpec, autoplay: Boolean) {
+    currentSource = source
     if (source.type == "youtube") {
       setYouTube(source, autoplay)
       return
@@ -214,6 +227,25 @@ object PlayerCore {
     }
     exo.playWhenReady = autoplay
     exo.prepare()
+  }
+
+  /**
+   * Rebuild the current source from scratch.
+   *
+   * setSource() deliberately short-circuits when the id is unchanged (the
+   * same-video handoff that preserves position across surface swaps), so it
+   * cannot recover a player that has actually died — an ExoPlayer in a fatal
+   * error state, or a YouTube page whose feed dropped. Clearing the id (and,
+   * for YouTube, the loaded flag) forces the full load path instead.
+   */
+  fun reload() {
+    val source = currentSource ?: return
+    currentVideoId = null
+    if (source.type == "youtube") {
+      // Force a full page load rather than a loadVideoById into a dead page.
+      webLoaded = false
+    }
+    setSource(source, autoplay = true)
   }
 
   // ----------------------------------------------------------- youtube engine
@@ -362,6 +394,9 @@ object PlayerCore {
           webDurationSec = json.optDouble("duration", 0.0)
           reportWebLive(json)
           reportWebLoadIfNeeded()
+          // Carry the player's audio/rate settings onto this new IFrame player,
+          // before any play() below so a muted player never leaks sound.
+          applyWebPlayerSettings()
           // Replay a play() that arrived while the player was still loading.
           if (pendingWebPlay) {
             pendingWebPlay = false
@@ -408,6 +443,13 @@ object PlayerCore {
     if (loadReported) return
     loadReported = true
     listener?.onLoad(currentVideoId ?: "", webDurationSec, 0, 0)
+  }
+
+  /** Push the retained audio/rate settings onto a freshly loaded IFrame player. */
+  private fun applyWebPlayerSettings() {
+    webCmd("setVolume", (desiredVolume * 100).toInt())
+    webCmd(if (desiredMuted) "mute" else "unMute")
+    if (desiredRate != 1.0) webCmd("setPlaybackRate", desiredRate)
   }
 
   /** Fire an IFrame-API command into the WebView (no-op unless WEB engine). */
@@ -649,6 +691,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
   }
 
   fun setRate(rate: Double) {
+    desiredRate = rate
     if (engine == Engine.WEB) {
       webCmd("setPlaybackRate", rate)
       return
@@ -657,14 +700,16 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
   }
 
   fun setVolume(volume: Double) {
+    desiredVolume = volume.coerceIn(0.0, 1.0)
     if (engine == Engine.WEB) {
-      webCmd("setVolume", (volume.coerceIn(0.0, 1.0) * 100).toInt())
+      webCmd("setVolume", (desiredVolume * 100).toInt())
       return
     }
     player?.volume = volume.toFloat().coerceIn(0f, 1f)
   }
 
   fun setMuted(muted: Boolean) {
+    desiredMuted = muted
     if (engine == Engine.WEB) {
       webCmd(if (muted) "mute" else "unMute")
       return
@@ -673,7 +718,9 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     if (muted) {
       exo.volume = 0f
     } else if (exo.volume == 0f) {
-      exo.volume = 1f
+      // Restore the level the app actually set, not a hardcoded full volume —
+      // unmuting after setVolume(0.3) should return to 0.3.
+      exo.volume = desiredVolume.toFloat().coerceIn(0f, 1f)
     }
   }
 
