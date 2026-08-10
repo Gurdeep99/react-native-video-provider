@@ -317,6 +317,93 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('app-pinned live-ness is per source', () => {
+    const fireLiveChange = (live: boolean) => {
+      const handler = native.onLiveChange.mock.calls.at(-1)?.[0] as (e: {
+        live: boolean;
+      }) => void;
+      handler({ live });
+    };
+
+    it('restores the pin when the engine hands a video back', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+
+      // Another card takes the engine...
+      manager.setSource(video('liveB'));
+      manager.setLive(true);
+      // ...and then the first one gets it back. Its player never unmounted, so
+      // nothing calls setLive() for it a second time — the manager has to
+      // remember. Previously `live` was hard-cleared here and stayed false, so
+      // the badge vanished and the seek bar appeared on a live stream.
+      manager.setSource(video('liveA'));
+
+      expect(manager.store.getState().live).toBe(true);
+    });
+
+    it('does not leak a pin onto an unrelated video', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+
+      manager.setSource(video('vodB'));
+      expect(manager.store.getState().live).toBe(false);
+    });
+
+    it('still lets the engine detect a source the app never pinned', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+      manager.setSource(video('unknownB'));
+
+      // A single global "app took control" latch suppressed native detection
+      // for every later source too, so this stayed false forever.
+      fireLiveChange(true);
+      expect(manager.store.getState().live).toBe(true);
+    });
+
+    it('keeps honouring the pin over engine detection for its own source', () => {
+      manager.setSource(video('liveA'));
+      manager.setLive(true);
+
+      fireLiveChange(false);
+      expect(manager.store.getState().live).toBe(true);
+    });
+  });
+
+  describe('live badge ownership', () => {
+    it('restores a surviving registration when another unmounts', () => {
+      const a = () => null;
+      const b = () => null;
+      manager.registerLiveIcon(a);
+      manager.registerLiveIcon(b);
+      expect(manager.store.getState().liveIcon).toBe(b);
+
+      // b unmounting must not blank the badge while a is still mounted.
+      manager.unregisterLiveIcon(b);
+      expect(manager.store.getState().liveIcon).toBe(a);
+
+      manager.unregisterLiveIcon(a);
+      expect(manager.store.getState().liveIcon).toBeNull();
+    });
+
+    it('a late unmount does not clobber the incoming registration', () => {
+      const outgoing = () => null;
+      const incoming = () => null;
+      manager.registerLiveIcon(outgoing);
+      // Virtualised list remount: the replacement registers before the old one
+      // tears down. Clearing unconditionally left the slot empty for good.
+      manager.registerLiveIcon(incoming);
+      manager.unregisterLiveIcon(outgoing);
+      expect(manager.store.getState().liveIcon).toBe(incoming);
+    });
+
+    it('ignores an unregister for a renderer that never registered', () => {
+      const a = () => null;
+      manager.registerLiveIcon(a);
+      manager.unregisterLiveIcon(() => null);
+      expect(manager.store.getState().liveIcon).toBe(a);
+    });
+  });
+
   describe('resume on focus', () => {
     it('resumes an autoplay source when it attaches back into view', () => {
       manager.setSource(video('yt1'), { autoplay: true });

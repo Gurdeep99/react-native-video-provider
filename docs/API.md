@@ -112,6 +112,20 @@ and in the fullscreen host. When live: the seek bar/times are hidden (mute +
 fullscreen remain) and the `liveIcon` badge sticks to the **top-right, always
 visible** — it does not auto-hide with the rest of the controls.
 
+Both are single slots on the one shared store, so ownership matters when several
+players are mounted at once (carousels, feeds):
+
+- **`live` is pinned per source id.** `setLive()` records the value against
+  whatever video is current when you call it, so the pin travels with that video
+  and is restored when the engine hands it back. It does not leak onto an
+  unrelated video, and a source you never pinned is still free to be detected by
+  the engine.
+- **`liveIcon` registrations are stacked.** `registerLiveIcon(renderer)` /
+  `unregisterLiveIcon(renderer)` (what `VideoPlayer` uses) show the newest
+  registration and fall back to a still-mounted sibling's when it is removed,
+  in any order. Prefer them over `setLiveIcon()` from a component —
+  `setLiveIcon()` is a raw override that does not participate in the stack.
+
 ### `<GestureOverlay onSingleTap? onDoubleTapLeft? onDoubleTapRight? onLongPress?>`
 Tap-gesture layer used by VideoControls, exported as a building block.
 

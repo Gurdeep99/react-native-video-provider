@@ -209,10 +209,15 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       // renders its own controls) shows it too. Registering a stable wrapper
       // keyed on *presence* rather than the prop itself means an ordinary
       // re-render can't churn the registration.
-      manager.setLiveIcon(
-        hasLiveIcon ? () => liveIconRef.current?.() ?? null : null
-      );
-      return () => manager.setLiveIcon(null);
+      if (!hasLiveIcon) {
+        return;
+      }
+      const renderer = () => liveIconRef.current?.() ?? null;
+      // register/unregister rather than setLiveIcon(null): the slot is shared by
+      // every mounted player, so ownership has to be tracked or an unmounting
+      // player blanks a sibling's badge with nothing to restore it.
+      manager.registerLiveIcon(renderer);
+      return () => manager.unregisterLiveIcon(renderer);
     }, [manager, hasLiveIcon]);
 
     useEffect(() => {
@@ -224,7 +229,13 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
         return;
       }
       manager.setLive(live);
-    }, [manager, live]);
+      // Re-assert after any handoff of THIS video. `live` is a constant for most
+      // callers, so this effect alone only ever ran at mount — meanwhile the
+      // engine reloading (or another player taking and returning the engine)
+      // resets `live` for the incoming source. Keying on source.id too means an
+      // already-mounted player re-pins its own stream instead of silently losing
+      // the badge and revealing the seek bar.
+    }, [manager, live, source.id]);
 
     useEffect(() => {
       if (!orientation || orientation === 'auto') {

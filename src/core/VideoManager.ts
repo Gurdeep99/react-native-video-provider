@@ -143,8 +143,35 @@ export class VideoManager {
   private liveRetryAttempt = 0;
   /** A live retry deferred because the device is offline. */
   private pendingLiveRetry = false;
-  /** The app called setLive() — stop letting native detection override it. */
-  private liveExplicit = false;
+  /**
+   * Source ids the app pinned live-ness for via `setLive()` (the `live` prop),
+   * and the value it pinned.
+   *
+   * Keyed by source id rather than a single global flag on purpose. A global
+   * flag had two failure modes, because one engine is shared by every mounted
+   * player:
+   *
+   *  - It latched forever. Once any player called `setLive()`, native detection
+   *    was suppressed for every later source too, so a VOD that followed a live
+   *    stream could never correct itself.
+   *  - `setSource` cleared `live` for a new source but nothing restored it. A
+   *    player's `setLive()` runs once when it mounts; when the engine later
+   *    handed that same video back (scrolling a feed/carousel), `live` stayed
+   *    false and the badge and seek-bar styling were wrong with no way back.
+   *
+   * Per-source means the pin travels with the video it was declared for.
+   */
+  private explicitLive = new Map<string, boolean>();
+  /**
+   * Live badge renderers of all currently mounted players, oldest first.
+   *
+   * `state.liveIcon` is a single slot but any number of players can be mounted
+   * at once (carousels, feeds). Keeping the registrations in a stack means the
+   * newest one shows and, when it unmounts, a surviving sibling's badge is
+   * restored instead of the slot being left empty — which is what happened when
+   * every player cleared the slot unconditionally on unmount.
+   */
+  private liveIconStack: LiveIconRenderer[] = [];
 
   // --- focus resume ---
   /** The current source was set with autoplay, so focus may resume it. */
@@ -319,9 +346,11 @@ export class VideoManager {
     subs.push(
       NativeVideo.onLiveChange((e) => {
         // The engine detected live-ness itself, so retry works even when the
-        // app never called setLive(). An explicit setLive() still wins — see
-        // liveExplicit.
-        if (this.liveExplicit) {
+        // app never called setLive(). An explicit setLive() still wins — but
+        // only for the source it was declared for, so a later video is free to
+        // be detected normally.
+        const id = this.store.getState().currentVideo?.id;
+        if (id !== undefined && this.explicitLive.has(id)) {
           return;
         }
         this.set({ live: e.live });
@@ -368,8 +397,6 @@ export class VideoManager {
     if (!sameVideo) {
       // A different video invalidates any in-flight live retry.
       this.clearLiveRetry();
-      // Let the engine decide live-ness again for the new source.
-      this.liveExplicit = false;
       // A new source carries its own autoplay intent and clears the pause latch.
       this.autoplayIntent = autoplay;
       this.userPaused = false;
@@ -381,12 +408,18 @@ export class VideoManager {
         duration: 0,
         buffered: 0,
         error: null,
-        // Clear live-ness too, or a VOD loaded after a live stream keeps the
-        // live styling (and hidden seekbar) until the engine re-reports. The
-        // engine sets this again via onLiveChange once the new item is ready.
+        // Reset live-ness to whatever this source is actually known to be, or a
+        // VOD loaded after a live stream keeps the live styling (and hidden
+        // seekbar) until the engine re-reports. If the app pinned live-ness for
+        // THIS source via the `live` prop, honour that immediately — otherwise
+        // false, and the engine corrects it via onLiveChange once the item is
+        // ready. Hard-clearing to false unconditionally was a one-way door: a
+        // player's `setLive()` only runs when it mounts, so an already-mounted
+        // player getting its video handed back had no way to re-pin it.
+        //
         // `liveIcon` deliberately survives: it's a registration owned by the
-        // mounted player, not per-video state.
-        live: false,
+        // mounted players (see liveIconStack), not per-video state.
+        live: this.explicitLive.get(source.id) ?? false,
       });
       // Both engines (native player / native WebView) live behind the same
       // TurboModule; the native side dispatches by source.type.
@@ -493,7 +526,12 @@ export class VideoManager {
    * pins the value — native detection stops overriding it for this source.
    */
   setLive(live: boolean, liveIcon?: LiveIconRenderer | null): void {
-    this.liveExplicit = true;
+    // Pin against the source this was declared for, so it survives the engine
+    // handing this video back later and doesn't leak onto an unrelated video.
+    const id = this.store.getState().currentVideo?.id;
+    if (id !== undefined) {
+      this.explicitLive.set(id, live);
+    }
     this.set({ live });
     // Only touch the badge when a renderer was actually passed. Clearing it on
     // every `setLive(false)` is what made the badge vanish after a remount:
@@ -518,6 +556,38 @@ export class VideoManager {
    */
   setLiveIcon(liveIcon: LiveIconRenderer | null): void {
     this.set({ liveIcon });
+  }
+
+  /**
+   * Register a mounted player's live badge renderer. The newest registration is
+   * the one shown.
+   *
+   * Prefer this over `setLiveIcon` from a component: several players can be
+   * mounted at once and they all share the single `liveIcon` slot, so ownership
+   * has to be tracked. Always pair with `unregisterLiveIcon(renderer)` — pass
+   * the SAME function reference back.
+   */
+  registerLiveIcon(renderer: LiveIconRenderer): void {
+    this.liveIconStack.push(renderer);
+    this.set({ liveIcon: renderer });
+  }
+
+  /**
+   * Drop a registration made by `registerLiveIcon` and show whichever earlier
+   * one is still mounted (null if none are).
+   *
+   * Order-independent by design: an unmounting player must not blank a sibling's
+   * badge, and a player that unmounts *after* its replacement has already
+   * registered must not undo the replacement.
+   */
+  unregisterLiveIcon(renderer: LiveIconRenderer): void {
+    const i = this.liveIconStack.lastIndexOf(renderer);
+    if (i === -1) {
+      return;
+    }
+    this.liveIconStack.splice(i, 1);
+    const next = this.liveIconStack[this.liveIconStack.length - 1] ?? null;
+    this.set({ liveIcon: next });
   }
 
   /**
@@ -803,6 +873,8 @@ export class VideoManager {
     this.initialized = false;
     this.lastInlineSurfaceId = null;
     this.fullscreenOrientationDefault = null;
+    this.explicitLive.clear();
+    this.liveIconStack = [];
     NativeVideo.setOrientation('auto');
     NativeVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);
