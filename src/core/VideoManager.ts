@@ -54,6 +54,13 @@ function getAppState(): {
 const LIVE_RETRY_MAX_DELAY_MS = 15000;
 
 /**
+ * Grace period after a focus-resume before deciding it failed. Long enough for
+ * a normal player to report playing/buffering, short enough that a viewer
+ * staring at a frozen frame isn't left there.
+ */
+const RESUME_VERIFY_MS = 2500;
+
+/**
  * YouTube IFrame error codes that no amount of retrying fixes: the video is
  * private/removed (100) or its owner disallows embedding (101/150). The
  * transient ones (2, 5) are already retried in-page by the WebView engine.
@@ -182,6 +189,8 @@ export class VideoManager {
    */
   private userPaused = false;
   private appStateSub: { remove: () => void } | null = null;
+  /** Pending check that a focus-resume actually restarted playback. */
+  private resumeVerifyTimer: ReturnType<typeof setTimeout> | null = null;
 
   private constructor() {}
 
@@ -453,6 +462,18 @@ export class VideoManager {
     NativeVideo.pause();
   }
 
+  /**
+   * Pause because the app backgrounded or the screen lost focus — a lifecycle
+   * event, not a decision by the viewer.
+   *
+   * Deliberately does NOT set the `userPaused` latch: going to the background
+   * is exactly the case `resumeOnFocus` exists to recover from, so latching
+   * here would make the pause permanent and autoplay would never resume.
+   */
+  pauseForFocusLoss(): void {
+    NativeVideo.pause();
+  }
+
   resume(): void {
     this.play();
   }
@@ -714,11 +735,42 @@ export class VideoManager {
     if (!this.config.resumeOnFocus || !this.autoplayIntent || this.userPaused) {
       return;
     }
-    const s = this.store.getState();
-    if (!s.currentVideo || s.playing) {
+    if (!this.store.getState().currentVideo) {
       return;
     }
+    // Intentionally not gated on `playing`. Coming back from the background
+    // the OS may have stopped playback without the engine reporting it (most
+    // reliably in fullscreen, where no component records the pause), leaving a
+    // stale `playing: true` that would skip the resume entirely. play() is
+    // idempotent, so issuing it unconditionally is the safer path.
     NativeVideo.play();
+    this.verifyResume();
+  }
+
+  /**
+   * Confirm the resume actually took, and rebuild the source if it didn't.
+   *
+   * A player suspended across a long background can come back unable to
+   * restart from play() alone — a WebView whose page was discarded, or an item
+   * the OS tore down. Waiting a beat and checking real state distinguishes
+   * "still spinning up" (fine) from "never came back" (needs a reload).
+   */
+  private verifyResume(): void {
+    if (this.resumeVerifyTimer) {
+      clearTimeout(this.resumeVerifyTimer);
+    }
+    this.resumeVerifyTimer = setTimeout(() => {
+      this.resumeVerifyTimer = null;
+      const s = this.store.getState();
+      if (!s.currentVideo || this.userPaused) {
+        return;
+      }
+      // Playing, or actively working towards it — leave it alone.
+      if (s.playing || s.buffering || s.loading) {
+        return;
+      }
+      this.reload();
+    }, RESUME_VERIFY_MS);
   }
 
   /** Detach from any surface. Playback continues (audio) unless configured otherwise. */
@@ -869,6 +921,10 @@ export class VideoManager {
     this.netUnsub = null;
     this.appStateSub?.remove();
     this.appStateSub = null;
+    if (this.resumeVerifyTimer) {
+      clearTimeout(this.resumeVerifyTimer);
+      this.resumeVerifyTimer = null;
+    }
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;

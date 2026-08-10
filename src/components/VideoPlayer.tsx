@@ -291,7 +291,9 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
         // Only the player currently owning the engine reacts, so a video
         // attached to another surface keeps playing untouched.
         if (next !== 'active' && manager.store.getState().surfaceId === id) {
-          manager.pause();
+          // A lifecycle pause, not a viewer decision — so it must not block
+          // the focus-resume that runs when the app comes back.
+          manager.pauseForFocusLoss();
         }
       });
       return () => sub.remove();
@@ -319,8 +321,10 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
         }
       } else if (state.surfaceId === id) {
         // Lost screen focus while playing our video — pause. Guarded so we
-        // never pause a video that has already handed off elsewhere.
-        manager.pause();
+        // never pause a video that has already handed off elsewhere. Same
+        // reasoning as the background pause: navigating away isn't the viewer
+        // pausing, so re-focusing must be able to resume.
+        manager.pauseForFocusLoss();
       }
     }, [manager, id, isFocused]);
 

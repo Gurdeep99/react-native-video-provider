@@ -413,6 +413,57 @@ describe('VideoManager', () => {
       expect(native.play).toHaveBeenCalled();
     });
 
+    it('resumes after a background pause (lifecycle, not a viewer decision)', () => {
+      manager.setSource(video('yt1'), { autoplay: true });
+      manager.pauseForFocusLoss(); // app went to background
+      native.play.mockClear();
+
+      manager.attach('feed'); // back in the foreground
+      expect(native.play).toHaveBeenCalled();
+    });
+
+    const fireLoaded = () => {
+      const onLoad = native.onLoad.mock.calls.at(-1)?.[0] as (e: {
+        videoId: string;
+        duration: number;
+        width: number;
+        height: number;
+      }) => void;
+      onLoad({ videoId: 'yt1', duration: 120, width: 1280, height: 720 });
+    };
+
+    it('reloads when a resume fails to restart playback', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('yt1'), { autoplay: true });
+      fireLoaded(); // video was up and running before backgrounding
+      manager.pauseForFocusLoss();
+      native.reload.mockClear();
+
+      manager.attach('feed');
+      // Engine never reports playing/buffering — it came back dead.
+      jest.advanceTimersByTime(3000);
+      expect(native.reload).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
+    });
+
+    it('does NOT reload when the resume did restart playback', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('yt1'), { autoplay: true });
+      fireLoaded();
+      manager.pauseForFocusLoss();
+      native.reload.mockClear();
+
+      manager.attach('feed');
+      const onStatus = native.onStatusChange.mock.calls.at(-1)?.[0] as (e: {
+        status: string;
+      }) => void;
+      onStatus({ status: 'playing' });
+
+      jest.advanceTimersByTime(3000);
+      expect(native.reload).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+
     it('does NOT resume after the viewer paused on purpose', () => {
       manager.setSource(video('yt1'), { autoplay: true });
       manager.pause();

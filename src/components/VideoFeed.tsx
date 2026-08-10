@@ -125,7 +125,9 @@ export function VideoFeed<T extends VideoSource>({
   useEffect(() => {
     return () => {
       if (pauseOnUnmount) {
-        manager.pause();
+        // Unmounting is a lifecycle event; remounting should be free to
+        // resume an autoplay source.
+        manager.pauseForFocusLoss();
       }
     };
   }, [manager, pauseOnUnmount]);
