@@ -415,6 +415,11 @@ public final class VideoPlayerCore: NSObject {
       webLoaded = false
     }
     setSource(source, autoplay: true)
+    // Re-parent the host view into the active surface. setSource only does this
+    // when switching engines, but a rebuild can leave the layer attached to a
+    // view torn down during the failure — playback resumes with nothing
+    // rendered, which is the black screen after a reconnect.
+    reAttachActive()
   }
 
   // ----------------------------------------------------------- youtube engine

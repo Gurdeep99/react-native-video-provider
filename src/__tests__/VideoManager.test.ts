@@ -349,7 +349,35 @@ describe('VideoManager', () => {
       expect(native.play).toHaveBeenCalled();
 
       // Still dead after the grace period — rebuild.
-      jest.advanceTimersByTime(3000);
+      jest.advanceTimersByTime(5000);
+      expect(native.reload).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
+    });
+
+    it('rebuilds a player still stuck buffering after the grace period', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('vod1'));
+      const onLoad = native.onLoad.mock.calls.at(-1)?.[0] as (e: {
+        videoId: string;
+        duration: number;
+        width: number;
+        height: number;
+      }) => void;
+      onLoad({ videoId: 'vod1', duration: 60, width: 640, height: 360 });
+      native.reload.mockClear();
+
+      setOnline(false);
+      setOnline(true);
+
+      // Native video often stalls without ever erroring — it just sits in
+      // buffering forever, which is the black screen. Buffering must NOT count
+      // as recovered.
+      const onStatus = native.onStatusChange.mock.calls.at(-1)?.[0] as (e: {
+        status: string;
+      }) => void;
+      onStatus({ status: 'buffering' });
+
+      jest.advanceTimersByTime(5000);
       expect(native.reload).toHaveBeenCalledTimes(1);
       jest.useRealTimers();
     });
@@ -550,7 +578,7 @@ describe('VideoManager', () => {
 
       manager.attach('feed');
       // Engine never reports playing/buffering — it came back dead.
-      jest.advanceTimersByTime(3000);
+      jest.advanceTimersByTime(5000);
       expect(native.reload).toHaveBeenCalledTimes(1);
       jest.useRealTimers();
     });
@@ -568,7 +596,7 @@ describe('VideoManager', () => {
       }) => void;
       onStatus({ status: 'playing' });
 
-      jest.advanceTimersByTime(3000);
+      jest.advanceTimersByTime(5000);
       expect(native.reload).not.toHaveBeenCalled();
       jest.useRealTimers();
     });

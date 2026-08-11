@@ -54,11 +54,14 @@ function getAppState(): {
 const LIVE_RETRY_MAX_DELAY_MS = 15000;
 
 /**
- * Grace period after a focus-resume before deciding it failed. Long enough for
- * a normal player to report playing/buffering, short enough that a viewer
- * staring at a frozen frame isn't left there.
+ * Grace period before deciding a resume failed and the source needs rebuilding.
+ *
+ * Sized to cover a real reconnect: a player that genuinely recovers has to
+ * re-establish its connection and refill its buffer, which can take a few
+ * seconds. Short enough that a viewer isn't left on a black screen, long
+ * enough that we don't tear down a player that was about to come back.
  */
-const RESUME_VERIFY_MS = 2500;
+const RESUME_VERIFY_MS = 4000;
 
 /**
  * YouTube IFrame error codes that no amount of retrying fixes: the video is
@@ -800,8 +803,12 @@ export class VideoManager {
       if (!s.currentVideo || this.userPaused) {
         return;
       }
-      // Playing, or actively working towards it — leave it alone.
-      if (s.playing || s.buffering || s.loading) {
+      // Only actual playback counts as recovered. Treating `buffering` as
+      // healthy was wrong: a native player whose connection dropped mid-stream
+      // sits in buffering indefinitely and never errors, so exempting it meant
+      // the rebuild never ran and the viewer kept staring at a black screen.
+      // `loading` is exempt because that IS a rebuild already in flight.
+      if (s.playing || s.loading) {
         return;
       }
       this.reload();
