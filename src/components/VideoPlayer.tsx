@@ -217,11 +217,9 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       if (muted === undefined) {
         return;
       }
-      if (muted) {
-        manager.mute();
-      } else {
-        manager.unmute();
-      }
+      // Declarative default only — a viewer toggle wins from then on, so
+      // remounting (e.g. opening fullscreen) can't re-mute what they unmuted.
+      manager.setMutedFromProp(muted);
     }, [manager, muted]);
 
     // Keep the newest renderer reachable without making it an effect dep:

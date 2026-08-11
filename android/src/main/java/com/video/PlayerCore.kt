@@ -250,7 +250,7 @@ object PlayerCore {
     // this when switching engines, but a rebuild can leave the view holding a
     // surface that was torn down during the failure — playback resumes with
     // nothing rendered, which is the black screen after a reconnect.
-    reAttachActive()
+    reassertActiveVideoOutput()
   }
 
   // ----------------------------------------------------------- youtube engine
@@ -820,6 +820,38 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
    * can stay black. Re-binding the player to the view on the next frame
    * forces the video output onto the fresh surface. No-op-safe for VOD.
    */
+  /**
+   * Force the engine's video output back onto the current surface.
+   *
+   * Needed after a rebuild: the new media source leaves PlayerView holding a
+   * stale output surface, so playback resumes with **audio but a black frame**.
+   * Re-setting the player on the view rebinds the output.
+   *
+   * attachTo() can't do this on its own — it early-returns when the view is
+   * already parented in the target container, which it always is after a
+   * rebuild, so the re-assert it would normally do never runs.
+   */
+  private fun reassertActiveVideoOutput() {
+    val id = currentSurfaceId ?: pendingSurfaceId ?: return
+    val container = SurfaceRegistry.get(id)
+    if (container == null) {
+      // Surface not mounted yet — attach when it registers.
+      pendingSurfaceId = id
+      return
+    }
+    if (engine != Engine.EXO) {
+      attach(id)
+      return
+    }
+    val pv = playerView ?: return
+    if (pv.parent !== container) {
+      // Genuinely detached: a normal attach re-parents and re-asserts.
+      attachTo(container, id)
+      return
+    }
+    reassertVideoOutput(pv, id, container)
+  }
+
   private fun reassertVideoOutput(
     pv: PlayerView,
     surfaceId: String,

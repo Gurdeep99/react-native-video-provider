@@ -419,7 +419,7 @@ public final class VideoPlayerCore: NSObject {
     // when switching engines, but a rebuild can leave the layer attached to a
     // view torn down during the failure — playback resumes with nothing
     // rendered, which is the black screen after a reconnect.
-    reAttachActive()
+    reassertActiveVideoOutput()
   }
 
   // ----------------------------------------------------------- youtube engine
@@ -503,6 +503,34 @@ public final class VideoPlayerCore: NSObject {
   }
 
   /// Re-parent the active engine's view into the current surface (engine swap).
+  /// Force the engine's video output back onto the current surface.
+  ///
+  /// Needed after a rebuild: replacing the player item can leave the layer
+  /// showing nothing even though playback resumed — **audio but a black
+  /// frame**. Re-setting the layer's player rebinds the output.
+  ///
+  /// attachTo() can't do this on its own: it early-returns when the view is
+  /// already in the target container, which it always is after a rebuild.
+  private func reassertActiveVideoOutput() {
+    guard let id = currentSurfaceId ?? pendingSurfaceId else { return }
+    guard let container = VideoSurfaceRegistry.view(for: id) else {
+      // Surface not mounted yet — attach when it registers.
+      pendingSurfaceId = id
+      return
+    }
+    if engine != .exo {
+      attach(id)
+      return
+    }
+    if hostView.superview !== container {
+      // Genuinely detached: a normal attach re-parents it.
+      attachTo(container, surfaceId: id)
+      return
+    }
+    hostView.playerLayer.player = nil
+    hostView.playerLayer.player = player
+  }
+
   private func reAttachActive() {
     guard let id = currentSurfaceId,
           let container = VideoSurfaceRegistry.view(for: id) else { return }

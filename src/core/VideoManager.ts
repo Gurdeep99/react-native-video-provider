@@ -64,6 +64,20 @@ const LIVE_RETRY_MAX_DELAY_MS = 15000;
 const RESUME_VERIFY_MS = 4000;
 
 /**
+ * How long a player may sit in `buffering` before the stall watchdog treats it
+ * as dead. Generous — real buffering on a poor connection is normal — but
+ * bounded, because a native engine whose link dropped mid-stream will buffer
+ * forever without ever raising an error.
+ */
+const BUFFER_STALL_MS = 12000;
+
+/** Shorter: an errored player has already failed, no point waiting long. */
+const ERROR_STALL_MS = 3000;
+
+/** Stall rebuilds allowed before giving up and leaving the failure visible. */
+const MAX_STALL_RECOVERIES = 3;
+
+/**
  * YouTube IFrame error codes that no amount of retrying fixes: the video is
  * private/removed (100) or its owner disallows embedding (101/150). The
  * transient ones (2, 5) are already retried in-page by the WebView engine.
@@ -191,9 +205,20 @@ export class VideoManager {
    * scrolling a paused video out of view and back would restart it.
    */
   private userPaused = false;
+  /**
+   * The viewer toggled audio themselves, so a component's `muted` prop must
+   * stop overriding it. Deliberately never reset per source: mute is a
+   * preference about the engine, and a viewer who unmuted expects it to stay
+   * unmuted across surfaces and across videos.
+   */
+  private mutedUserSet = false;
   private appStateSub: { remove: () => void } | null = null;
   /** Pending check that a focus-resume actually restarted playback. */
   private resumeVerifyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Armed while the player is stuck buffering or errored. */
+  private stallTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Stall rebuilds since playback last actually ran. */
+  private stallRecoveries = 0;
 
   private constructor() {}
 
@@ -396,6 +421,62 @@ export class VideoManager {
     if ((status === 'buffering') !== (prev.status === 'buffering')) {
       this.events.emit('onBuffer', { buffering: status === 'buffering' });
     }
+    this.updateStallWatchdog(status);
+  }
+
+  /**
+   * Rebuild a player that has been stuck long enough to count as dead.
+   *
+   * This is a safety net that watches the symptom rather than any particular
+   * cause. Every other recovery path depends on something upstream firing
+   * correctly — NetInfo reporting a transition, or the engine raising an
+   * error — and when a connection drops mid-stream neither is guaranteed: the
+   * native engine can sit in `buffering` forever, and NetInfo never reports a
+   * change if the interface stayed up while the link was actually dead. From
+   * the viewer's side those are all one thing: a black screen that never
+   * recovers. Watching for "stuck" catches them all.
+   *
+   * Recovery is capped: a source that keeps stalling is genuinely broken, and
+   * looping reloads would be worse than showing the failure.
+   */
+  private updateStallWatchdog(status: PlaybackStatus): void {
+    const stuck = status === 'buffering' || status === 'error';
+    if (!stuck) {
+      // Any other state means it moved — reset the budget too, so a later
+      // stall gets a fresh set of attempts.
+      this.clearStallWatchdog();
+      if (status === 'playing') {
+        this.stallRecoveries = 0;
+      }
+      return;
+    }
+    if (this.stallTimer || this.stallRecoveries >= MAX_STALL_RECOVERIES) {
+      return;
+    }
+    const delay = status === 'error' ? ERROR_STALL_MS : BUFFER_STALL_MS;
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = null;
+      const s = this.store.getState();
+      if (!s.currentVideo || this.userPaused) {
+        return;
+      }
+      // Still stuck in the same state it was armed for.
+      if (!s.buffering && s.status !== 'error') {
+        return;
+      }
+      if (s.error && isFatalError(s.error)) {
+        return;
+      }
+      this.stallRecoveries += 1;
+      this.reload();
+    }, delay);
+  }
+
+  private clearStallWatchdog(): void {
+    if (this.stallTimer) {
+      clearTimeout(this.stallTimer);
+      this.stallTimer = null;
+    }
   }
 
   // -------------------------------------------------------------- commands
@@ -416,6 +497,8 @@ export class VideoManager {
       // A new source carries its own autoplay intent and clears the pause latch.
       this.autoplayIntent = autoplay;
       this.userPaused = false;
+      this.clearStallWatchdog();
+      this.stallRecoveries = 0;
       this.set({
         currentVideo: source,
         status: 'loading',
@@ -526,13 +609,38 @@ export class VideoManager {
   }
 
   mute(): void {
-    this.set({ muted: true });
-    NativeVideo.setMuted(true);
+    this.mutedUserSet = true;
+    this.applyMuted(true);
   }
 
   unmute(): void {
-    this.set({ muted: false });
-    NativeVideo.setMuted(false);
+    this.mutedUserSet = true;
+    this.applyMuted(false);
+  }
+
+  /**
+   * Apply a component's declarative `muted` prop.
+   *
+   * Ignored once the viewer has toggled audio themselves. Mute is a property of
+   * the one shared engine, not of a component, so it has to survive moving
+   * between surfaces: unmuting in the inline player then opening fullscreen
+   * remounts a player whose prop still says `muted`, and re-asserting it would
+   * silently re-mute the video the viewer just turned on (and the same in
+   * reverse on the way back).
+   */
+  setMutedFromProp(muted: boolean): void {
+    if (this.mutedUserSet) {
+      return;
+    }
+    this.applyMuted(muted);
+  }
+
+  private applyMuted(muted: boolean): void {
+    if (this.store.getState().muted === muted) {
+      return;
+    }
+    this.set({ muted });
+    NativeVideo.setMuted(muted);
   }
 
   setRepeat(repeat: boolean): void {
@@ -967,6 +1075,12 @@ export class VideoManager {
       clearTimeout(this.resumeVerifyTimer);
       this.resumeVerifyTimer = null;
     }
+    this.clearStallWatchdog();
+    this.stallRecoveries = 0;
+    // Full teardown resets the store, so the latches guarding it must go too,
+    // or a fresh player would inherit the previous session's decisions.
+    this.mutedUserSet = false;
+    this.userPaused = false;
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;

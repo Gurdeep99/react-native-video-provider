@@ -303,6 +303,98 @@ describe('VideoManager', () => {
     });
   });
 
+  describe('mute state across surfaces', () => {
+    it('a viewer unmute survives a remount that still says muted', () => {
+      // Inline player mounts muted.
+      manager.setMutedFromProp(true);
+      expect(manager.store.getState().muted).toBe(true);
+
+      // Viewer unmutes via the controls.
+      manager.unmute();
+      expect(manager.store.getState().muted).toBe(false);
+
+      // Fullscreen opens and the player remounts with muted={true} still set —
+      // this used to silently re-mute the video they just turned on.
+      manager.setMutedFromProp(true);
+      expect(manager.store.getState().muted).toBe(false);
+    });
+
+    it('works in reverse: a viewer mute survives an unmuted prop', () => {
+      manager.setMutedFromProp(false);
+      manager.mute();
+      expect(manager.store.getState().muted).toBe(true);
+
+      manager.setMutedFromProp(false);
+      expect(manager.store.getState().muted).toBe(true);
+    });
+
+    it('the prop still applies until the viewer touches it', () => {
+      manager.setMutedFromProp(true);
+      expect(manager.store.getState().muted).toBe(true);
+      manager.setMutedFromProp(false);
+      expect(manager.store.getState().muted).toBe(false);
+    });
+
+    it('does not re-issue a native call when the value is unchanged', () => {
+      manager.mute();
+      native.setMuted.mockClear();
+      manager.mute();
+      expect(native.setMuted).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stall watchdog', () => {
+    const setStatus = (status: string) => {
+      const handler = native.onStatusChange.mock.calls.at(-1)?.[0] as (e: {
+        status: string;
+      }) => void;
+      handler({ status });
+    };
+
+    it('rebuilds a player left buffering indefinitely', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('vod1'));
+      native.reload.mockClear();
+
+      // No NetInfo transition, no error — the engine simply never recovers.
+      // This is the case every other path misses.
+      setStatus('buffering');
+      jest.advanceTimersByTime(13000);
+
+      expect(native.reload).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
+    });
+
+    it('does not rebuild when buffering resolves on its own', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('vod1'));
+      native.reload.mockClear();
+
+      setStatus('buffering');
+      jest.advanceTimersByTime(4000);
+      setStatus('playing'); // recovered by itself
+      jest.advanceTimersByTime(20000);
+
+      expect(native.reload).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+
+    it('gives up after repeated stalls rather than looping forever', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('vod1'));
+      native.reload.mockClear();
+
+      for (let i = 0; i < 6; i += 1) {
+        setStatus('buffering');
+        jest.advanceTimersByTime(13000);
+        setStatus('loading'); // reload() moves it out of buffering
+      }
+
+      expect(native.reload).toHaveBeenCalledTimes(3);
+      jest.useRealTimers();
+    });
+  });
+
   describe('reconnect recovery', () => {
     const setOnline = (online: boolean) => {
       mockNetInfoListener?.({
