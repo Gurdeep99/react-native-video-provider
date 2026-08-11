@@ -40,6 +40,23 @@ jest.mock('../NativeVideo', () => ({
   },
 }));
 
+// Captured NetInfo callback so tests can drive connectivity transitions.
+// Must be `mock`-prefixed: jest hoists mock factories above other bindings.
+let mockNetInfoListener: ((s: unknown) => void) | null = null;
+jest.mock(
+  '@react-native-community/netinfo',
+  () => ({
+    __esModule: true,
+    default: {
+      addEventListener: (cb: (s: unknown) => void) => {
+        mockNetInfoListener = cb;
+        return () => {};
+      },
+    },
+  }),
+  { virtual: true }
+);
+
 const native = NativeVideo as jest.Mocked<typeof NativeVideo>;
 
 const video = (id: string): VideoSource => ({
@@ -257,6 +274,98 @@ describe('VideoManager', () => {
       manager.store.setState({ duration: 100 });
       manager.seek(30);
       expect(native.seekTo).toHaveBeenLastCalledWith(30);
+    });
+  });
+
+  describe('sensor-following fullscreen (rotation prop)', () => {
+    it("'auto' lets fullscreen follow the sensor instead of locking", () => {
+      // What VideoPlayer registers for `rotation`. 'auto' is what both engines
+      // read as "no lock": Android FULL_SENSOR, iOS an empty mask so the
+      // fullscreen mask applies.
+      manager.setFullscreenOrientation('auto');
+      manager.enterFullscreen();
+
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('auto');
+      expect(manager.store.getState().fullscreenLock).toBe('auto');
+    });
+
+    it('still locks landscape when rotation is not registered', () => {
+      manager.enterFullscreen();
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('landscape');
+    });
+
+    it('an explicit fullscreenOrientation still wins over auto', () => {
+      // VideoPlayer resolves `fullscreenOrientation ?? (rotation ? 'auto' : null)`,
+      // so a specific lock is what reaches the manager.
+      manager.setFullscreenOrientation('portrait');
+      manager.enterFullscreen();
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('portrait');
+    });
+  });
+
+  describe('reconnect recovery', () => {
+    const setOnline = (online: boolean) => {
+      mockNetInfoListener?.({
+        isConnected: online,
+        isInternetReachable: online,
+      });
+    };
+
+    const fireError = () => {
+      const handler = native.onError.mock.calls.at(-1)?.[0] as (e: {
+        code: string;
+        message: string;
+      }) => void;
+      handler({ code: 'io', message: 'network lost' });
+    };
+
+    it('rebuilds a NON-live video that failed while offline', () => {
+      manager.setSource(video('vod1')); // never marked live
+      native.reload.mockClear();
+
+      setOnline(false);
+      fireError();
+      setOnline(true);
+
+      // Live retry doesn't cover this source; reconnect recovery must.
+      expect(native.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('nudges an interrupted (but not errored) video and verifies it', () => {
+      jest.useFakeTimers();
+      manager.setSource(video('vod1'));
+      const onLoad = native.onLoad.mock.calls.at(-1)?.[0] as (e: {
+        videoId: string;
+        duration: number;
+        width: number;
+        height: number;
+      }) => void;
+      onLoad({ videoId: 'vod1', duration: 60, width: 640, height: 360 });
+      native.play.mockClear();
+      native.reload.mockClear();
+
+      setOnline(false);
+      setOnline(true);
+      expect(native.play).toHaveBeenCalled();
+
+      // Still dead after the grace period — rebuild.
+      jest.advanceTimersByTime(3000);
+      expect(native.reload).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
+    });
+
+    it('leaves a deliberately paused video alone on reconnect', () => {
+      manager.setSource(video('vod1'));
+      manager.pause();
+      native.reload.mockClear();
+      native.play.mockClear();
+
+      setOnline(false);
+      fireError();
+      setOnline(true);
+
+      expect(native.reload).not.toHaveBeenCalled();
+      expect(native.play).not.toHaveBeenCalled();
     });
   });
 

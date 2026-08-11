@@ -58,9 +58,36 @@ export interface VideoPlayerProps extends ViewProps {
    */
   fullscreenOrientation?: OrientationLock;
   /**
-   * YouTube-style: physically rotating the device to landscape auto-enters
-   * fullscreen, and rotating back to portrait exits it. Off by default.
-   * Requires the app to allow landscape at the OS level.
+   * Let fullscreen follow the device sensor instead of locking to one
+   * orientation: turning the phone rotates the video between landscape-left,
+   * landscape-right and portrait, with no exit/re-enter.
+   *
+   * Fullscreen locks to landscape by default precisely so a video can't
+   * sensor-rotate out from under the viewer; set this when you want the
+   * opposite. Shorthand for `fullscreenOrientation="auto"` — pass that
+   * directly if you need a specific lock, and it wins over this flag.
+   *
+   * On iOS the app must allow landscape in its Info.plist, and the AppDelegate
+   * must forward to `VideoOrientation` (see README) for rotation to be
+   * permitted at all.
+   */
+  rotation?: boolean;
+  /**
+   * Let the small inline player follow the sensor: physically rotating the
+   * device to landscape enters fullscreen, and rotating back to portrait
+   * exits it — no button press. Off by default.
+   *
+   * Pairs with `rotation`, which governs rotation *once already* fullscreen:
+   *   - `componentRotation` — how you get INTO fullscreen (turn the phone)
+   *   - `rotation`          — whether fullscreen keeps following the sensor
+   * Set both for a fully sensor-driven player.
+   *
+   * Requires the app to allow landscape at the OS level (see `rotation`).
+   */
+  componentRotation?: boolean;
+  /**
+   * Older name for {@link componentRotation}; both behave identically and
+   * either enables the behaviour. Kept so existing code keeps working.
    */
   autoFullscreenOnRotate?: boolean;
   /**
@@ -131,6 +158,8 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       muted,
       orientation,
       fullscreenOrientation,
+      rotation = false,
+      componentRotation = false,
       autoFullscreenOnRotate = false,
       pauseOnFocusLost = true,
       isFocused,
@@ -246,20 +275,25 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     }, [manager, orientation]);
 
     useEffect(() => {
-      if (!fullscreenOrientation) {
+      // An explicit `fullscreenOrientation` is the specific form and wins;
+      // `rotation` is the boolean shorthand for "follow the sensor", which is
+      // what 'auto' means to both engines (Android FULL_SENSOR, iOS an empty
+      // lock so the fullscreen mask applies).
+      const lock = fullscreenOrientation ?? (rotation ? 'auto' : null);
+      if (!lock) {
         return;
       }
-      manager.setFullscreenOrientation(fullscreenOrientation);
+      manager.setFullscreenOrientation(lock);
       return () => manager.setFullscreenOrientation(null);
-    }, [manager, fullscreenOrientation]);
+    }, [manager, fullscreenOrientation, rotation]);
 
     // Opt-in YouTube-style auto fullscreen on physical rotation: rotating the
     // device to landscape enters fullscreen and rotating back exits. Enters
     // with 'auto' (not a forced lock) so the device sensor keeps driving and
-    // rotating back can exit. Off unless `autoFullscreenOnRotate` is set, and
-    // needs the app to allow landscape at the OS level.
+    // rotating back can exit. Needs the app to allow landscape at the OS level.
+    const rotateIntoFullscreen = componentRotation || autoFullscreenOnRotate;
     useEffect(() => {
-      if (!autoFullscreenOnRotate) {
+      if (!rotateIntoFullscreen) {
         return;
       }
       const onChange = ({
@@ -281,7 +315,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       };
       const sub = Dimensions.addEventListener('change', onChange);
       return () => sub.remove();
-    }, [manager, id, autoFullscreenOnRotate]);
+    }, [manager, id, rotateIntoFullscreen]);
 
     useEffect(() => {
       if (!pauseOnFocusLost) {

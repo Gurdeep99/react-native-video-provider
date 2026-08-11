@@ -130,24 +130,47 @@ const { enter, toggle } = useFullscreen();
 enter('landscape');
 ```
 
-Fullscreen **locks** orientation — it never follows the device sensor.
-Tapping the fullscreen button rotates to landscape (default) and it stays put
-however you hold the phone; tapping exit returns to portrait. To also stop the
-*inline* video from sensor-rotating with the rest of the app, set
-`lockPortrait` on the provider — the app stays portrait and only fullscreen
-rotates to landscape:
+Fullscreen **locks** orientation by default — it doesn't follow the device
+sensor. Tapping the fullscreen button rotates to landscape and it stays put
+however you hold the phone; tapping exit returns to portrait.
+
+To let fullscreen rotate freely with the device instead — landscape-left,
+landscape-right and portrait, with no exit/re-enter — set `rotation`:
+
+```tsx
+<VideoPlayer source={video} rotation />
+```
+
+That's shorthand for `fullscreenOrientation="auto"`; pass that directly if you
+need a specific lock, and it wins over `rotation`. On iOS the app must allow
+landscape in its Info.plist and forward orientation from the AppDelegate (see
+[Platform setup](#ios--fullscreen-rotation)), or the OS won't permit rotation
+at all.
+
+To also stop the *inline* video from sensor-rotating with the rest of the app,
+set `lockPortrait` on the provider — the app stays portrait and only fullscreen
+rotates:
 
 ```tsx
 <VideoProvider config={{ lockPortrait: true }}>
 ```
 
-Opt in to YouTube-style sensor auto fullscreen with `autoFullscreenOnRotate`
-(off by default): physically rotating to landscape enters fullscreen and
-rotating back exits. Requires the app to allow landscape at the OS level:
+The two rotation props compose — one gets you *into* fullscreen, the other
+governs what happens *once there*:
+
+| Prop | Effect |
+| --- | --- |
+| `componentRotation` | Turning the device to landscape enters fullscreen; turning back exits. No button press. |
+| `rotation` | Once fullscreen, keep following the sensor instead of locking. |
 
 ```tsx
-<VideoPlayer source={video} autoFullscreenOnRotate />
+// Fully sensor-driven, YouTube style:
+<VideoPlayer source={video} componentRotation rotation />
 ```
+
+Both are off by default and both need the app to allow landscape at the OS
+level. `autoFullscreenOnRotate` is the older name for `componentRotation`;
+either works.
 
 Or as a standing lock, independent of fullscreen:
 

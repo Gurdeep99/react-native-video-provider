@@ -249,10 +249,14 @@ export class VideoManager {
           const cameOnline = online && !this.online;
           this.online = online;
           this.set({ online });
-          // Reconnected — run any live retry we deferred while offline.
-          if (cameOnline && this.pendingLiveRetry) {
-            this.pendingLiveRetry = false;
-            this.scheduleLiveRetry();
+          if (cameOnline) {
+            // Reconnected — run any live retry we deferred while offline.
+            if (this.pendingLiveRetry) {
+              this.pendingLiveRetry = false;
+              this.scheduleLiveRetry();
+            } else {
+              this.recoverAfterReconnect();
+            }
           }
         }
       );
@@ -745,6 +749,37 @@ export class VideoManager {
     // idempotent, so issuing it unconditionally is the safer path.
     NativeVideo.play();
     this.verifyResume();
+  }
+
+  /**
+   * Recover playback that a network outage broke.
+   *
+   * Live retry only covers sources marked live, so without this a VOD — or a
+   * live stream that merely stalled without ever raising an error — sat on a
+   * black screen after the connection came back, with nothing scheduled to
+   * rebuild it. Living on the manager means every surface is covered,
+   * fullscreen included, rather than only whichever component is mounted.
+   *
+   * A viewer-initiated pause is left alone: they chose to stop, and `reload()`
+   * would restart playback under them.
+   */
+  private recoverAfterReconnect(): void {
+    const s = this.store.getState();
+    if (!s.currentVideo || this.userPaused) {
+      return;
+    }
+    if (s.status === 'error' || s.error) {
+      // A player that actually failed can't restart from play(): its item is
+      // terminal (or its WebView page is gone). Only a rebuild brings it back.
+      this.reload();
+      return;
+    }
+    if (this.autoplayIntent) {
+      // Not errored, just interrupted — nudge it, and let verifyResume rebuild
+      // if it turns out not to come back on its own.
+      NativeVideo.play();
+      this.verifyResume();
+    }
   }
 
   /**
