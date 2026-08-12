@@ -164,6 +164,14 @@ public final class VideoPlayerCore: NSObject {
   private var liveRecoveries = 0
   /// Last live-ness reported to JS, so we only emit on change.
   private var reportedLive: Bool?
+  /// Playback was interrupted hard enough that the video output may be stale.
+  ///
+  /// A network drop can leave the presentation layer showing nothing while the
+  /// engine recovers — including when it recovers on its own, with no error and
+  /// no stall for anything upstream to react to. Playback resumes, audio and
+  /// all, over a black frame that never clears. Re-asserting on the way back to
+  /// readyToPlay covers every recovery, ours or the engine's.
+  private var videoOutputStale = false
   /// Retained so a failed item can be rebuilt from the same source.
   private var currentSource: VideoSourceSpec?
 
@@ -364,6 +372,12 @@ public final class VideoPlayerCore: NSObject {
       guard let self else { return }
       switch item.status {
       case .readyToPlay:
+        // Back from a real interruption: rebuild the render path before
+        // anything else, or playback resumes into a layer nobody sees.
+        if self.videoOutputStale {
+          self.videoOutputStale = false
+          self.reassertActiveVideoOutput()
+        }
         // Playing again — let a future stall spend a fresh recovery budget.
         self.liveRecoveries = 0
         self.reportLiveIfChanged()
@@ -380,6 +394,7 @@ public final class VideoPlayerCore: NSObject {
           )
         }
       case .failed:
+        self.videoOutputStale = true
         // A failed item is terminal — AVPlayer never retries it. For a live
         // source, swap in a fresh item rather than surfacing a dead player.
         if self.reportedLive == true, self.liveRecoveries < Self.maxLiveRecoveries {
@@ -511,6 +526,11 @@ public final class VideoPlayerCore: NSObject {
   ///
   /// attachTo() can't do this on its own: it early-returns when the view is
   /// already in the target container, which it always is after a rebuild.
+  /// Public entry point for JS: force a re-parent regardless of native state.
+  @objc public func reassertVideoOutput() {
+    reassertActiveVideoOutput()
+  }
+
   private func reassertActiveVideoOutput() {
     guard let id = currentSurfaceId ?? pendingSurfaceId else { return }
     guard let container = VideoSurfaceRegistry.view(for: id) else {
@@ -518,17 +538,22 @@ public final class VideoPlayerCore: NSObject {
       pendingSurfaceId = id
       return
     }
-    if engine != .exo {
-      attach(id)
-      return
+    // Force the full detach -> attach cycle rather than just re-binding the
+    // layer's player. After a rebuild the presentation layer can be left
+    // showing nothing while playback continues, which reads as audio fine over
+    // a black frame. Re-parenting rebuilds the presentation path.
+    //
+    // This is exactly what a viewer does by hand when they exit fullscreen and
+    // re-enter it: that unmounts and remounts the surface, and it clears the
+    // black frame every time. Doing it here saves them the trip.
+    activeView.removeFromSuperview()
+    attachTo(container, surfaceId: id)
+    // Rebind explicitly too: replaceCurrentItem can leave the layer holding a
+    // stale player reference that re-parenting alone doesn't refresh.
+    if engine == .exo {
+      hostView.playerLayer.player = nil
+      hostView.playerLayer.player = player
     }
-    if hostView.superview !== container {
-      // Genuinely detached: a normal attach re-parents it.
-      attachTo(container, surfaceId: id)
-      return
-    }
-    hostView.playerLayer.player = nil
-    hostView.playerLayer.player = player
   }
 
   private func reAttachActive() {
@@ -882,6 +907,7 @@ public final class VideoPlayerCore: NSObject {
   @objc private func itemStalled(_ notification: Notification) {
     guard let item = notification.object as? AVPlayerItem,
           item === player.currentItem else { return }
+    videoOutputStale = true
     delegate?.onStatusChange("buffering")
     guard isCurrentItemLive() else {
       // VOD refills its buffer on its own; just nudge the rate back.

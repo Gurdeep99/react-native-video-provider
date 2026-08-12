@@ -9,6 +9,7 @@ jest.mock('../NativeVideo', () => ({
     setSource: jest.fn(),
     preload: jest.fn(),
     reload: jest.fn(),
+    reassertVideoOutput: jest.fn(),
     play: jest.fn(),
     pause: jest.fn(),
     stop: jest.fn(),
@@ -340,6 +341,83 @@ describe('VideoManager', () => {
       native.setMuted.mockClear();
       manager.mute();
       expect(native.setMuted).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('mute is shared between the inline player and fullscreen', () => {
+    // There is exactly one engine and one `muted` boolean in the store — the
+    // built-in FullscreenPlayer never sets mute itself, it only displays and
+    // toggles the same value the inline player does. These lock that
+    // guarantee in as a regression test rather than an implicit accident of
+    // the architecture.
+
+    it('muting the inline ("component") player carries into fullscreen', () => {
+      manager.attach('feed'); // the small inline surface
+      manager.mute();
+
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID); // built-in host attaches itself
+
+      expect(manager.store.getState().muted).toBe(true);
+    });
+
+    it('unmuting the inline player carries into fullscreen', () => {
+      manager.attach('feed');
+      manager.mute();
+      manager.unmute();
+
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+
+      expect(manager.store.getState().muted).toBe(false);
+    });
+
+    it('toggling mute while fullscreen carries back to the inline player on exit', () => {
+      manager.attach('feed');
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+
+      manager.mute(); // toggled from fullscreen's controls
+
+      manager.exitFullscreen();
+      expect(manager.store.getState().muted).toBe(true);
+    });
+  });
+
+  describe('reassertVideoOutput on recovery', () => {
+    it('force re-parents on reconnect even when playback never errored', () => {
+      // The engine recovered from the network drop entirely on its own —
+      // buffering straight back to playing, no error, no idle transition. No
+      // native signal exists for "the surface might be stale"; the reconnect
+      // itself is the only evidence, so JS must act on it directly.
+      manager.setSource(video('vod1'));
+      const onLoad = native.onLoad.mock.calls.at(-1)?.[0] as (e: {
+        videoId: string;
+        duration: number;
+        width: number;
+        height: number;
+      }) => void;
+      onLoad({ videoId: 'vod1', duration: 60, width: 640, height: 360 });
+
+      const onStatus = native.onStatusChange.mock.calls.at(-1)?.[0] as (e: {
+        status: string;
+      }) => void;
+      onStatus({ status: 'playing' }); // was already playing throughout
+
+      const handler = mockNetInfoListener!;
+      handler({ isConnected: false, isInternetReachable: false });
+      native.reassertVideoOutput.mockClear();
+      handler({ isConnected: true, isInternetReachable: true });
+
+      expect(native.reassertVideoOutput).toHaveBeenCalledTimes(1);
+    });
+
+    it('force re-parents on focus resume regardless of reported playing state', () => {
+      manager.setSource(video('vod1'), { autoplay: true });
+      native.reassertVideoOutput.mockClear();
+
+      manager.attach('feed'); // regaining focus
+      expect(native.reassertVideoOutput).toHaveBeenCalledTimes(1);
     });
   });
 

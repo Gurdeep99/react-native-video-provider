@@ -92,6 +92,13 @@ static VideoSourceSpec *VideoParseSource(NativeVideoSource &source)
   dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared reload]; });
 }
 
+- (void)reassertVideoOutput
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [VideoPlayerCore.shared reassertVideoOutput];
+  });
+}
+
 #pragma mark - Commands
 
 - (void)play

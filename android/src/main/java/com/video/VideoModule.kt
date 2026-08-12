@@ -63,6 +63,10 @@ class VideoModule(reactContext: ReactApplicationContext) :
     UiThreadUtil.runOnUiThread { PlayerCore.reload() }
   }
 
+  override fun reassertVideoOutput() {
+    UiThreadUtil.runOnUiThread { PlayerCore.reassertVideoOutput() }
+  }
+
   private fun parseSource(map: ReadableMap): SourceSpec? {
     val id = map.getString("id") ?: return null
     val uri = map.getString("uri") ?: return null

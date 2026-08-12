@@ -153,6 +153,7 @@ export class VideoManager {
     lockPortrait: false,
     liveAutoRetry: true,
     resumeOnFocus: true,
+    debug: false,
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
@@ -226,6 +227,15 @@ export class VideoManager {
     return this.config;
   }
 
+  /** Trace a recovery decision when `debug` is on. See VideoProviderConfig. */
+  private log(message: string, detail?: Record<string, unknown>): void {
+    if (!this.config.debug) {
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[video] ${message}`, detail ?? '');
+  }
+
   /**
    * Idempotent. Called by VideoProvider on mount ("mount silently"):
    * creates the native player once and wires native events.
@@ -277,6 +287,7 @@ export class VideoManager {
           const cameOnline = online && !this.online;
           this.online = online;
           this.set({ online });
+          this.log('netinfo', { online, cameOnline });
           if (cameOnline) {
             // Reconnected — run any live retry we deferred while offline.
             if (this.pendingLiveRetry) {
@@ -467,6 +478,10 @@ export class VideoManager {
       if (s.error && isFatalError(s.error)) {
         return;
       }
+      this.log('stall watchdog -> reload', {
+        status: s.status,
+        attempt: this.stallRecoveries + 1,
+      });
       this.stallRecoveries += 1;
       this.reload();
     }, delay);
@@ -740,6 +755,7 @@ export class VideoManager {
     if (!this.store.getState().currentVideo) {
       return;
     }
+    this.log('reload -> native');
     this.set({ status: 'loading', loading: true, error: null });
     NativeVideo.reload();
   }
@@ -858,6 +874,14 @@ export class VideoManager {
     // reliably in fullscreen, where no component records the pause), leaving a
     // stale `playing: true` that would skip the resume entirely. play() is
     // idempotent, so issuing it unconditionally is the safer path.
+    //
+    // reassertVideoOutput() first and unconditionally: if the engine already
+    // recovered internally (paused, not stopped — no error, no idle transition)
+    // there is no native signal telling us the render surface went stale, so we
+    // can't wait for one. We already know playback was interrupted; that alone
+    // is reason enough to re-parent.
+    this.log('focus resume -> reassert + play + verify');
+    NativeVideo.reassertVideoOutput();
     NativeVideo.play();
     this.verifyResume();
   }
@@ -882,12 +906,22 @@ export class VideoManager {
     if (s.status === 'error' || s.error) {
       // A player that actually failed can't restart from play(): its item is
       // terminal (or its WebView page is gone). Only a rebuild brings it back.
+      this.log('reconnect -> reload (errored)');
       this.reload();
       return;
     }
     if (this.autoplayIntent) {
       // Not errored, just interrupted — nudge it, and let verifyResume rebuild
       // if it turns out not to come back on its own.
+      //
+      // reassertVideoOutput() unconditionally, same reasoning as
+      // resumeOnFocus: the engine can recover from a network drop on its own —
+      // buffering straight back to playing, no error, no idle transition — and
+      // when it does, nothing native marks the render surface stale. The
+      // reconnect itself is the evidence; acting on it directly is the only way
+      // to reach that case, since native never will on its own.
+      this.log('reconnect -> reassert + play + verify', { status: s.status });
+      NativeVideo.reassertVideoOutput();
       NativeVideo.play();
       this.verifyResume();
     }
@@ -919,6 +953,7 @@ export class VideoManager {
       if (s.playing || s.loading) {
         return;
       }
+      this.log('resume did not take -> reload', { status: s.status });
       this.reload();
     }, RESUME_VERIFY_MS);
   }

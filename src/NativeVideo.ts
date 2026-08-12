@@ -81,6 +81,21 @@ export interface Spec extends TurboModule {
    */
   reload(): void;
 
+  /**
+   * Force the engine's video output back onto its current surface.
+   *
+   * For engines like ExoPlayer's TextureView, an interruption can leave the
+   * render surface stale even though the player itself recovers cleanly —
+   * playback resumes (audio included) but nothing is drawn. That recovery can
+   * happen inside the engine with no error and no idle transition for native
+   * code to react to, so this exists as an explicit, state-independent command:
+   * the JS side calls it whenever it has other evidence of an interruption
+   * (a connectivity drop, regaining focus) rather than waiting on a native
+   * signal that may never come. Cheap and safe to call when nothing was
+   * actually wrong — it's a no-op re-parent in that case.
+   */
+  reassertVideoOutput(): void;
+
   play(): void;
   pause(): void;
   stop(): void;

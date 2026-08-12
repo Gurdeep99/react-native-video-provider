@@ -67,6 +67,8 @@ object PlayerCore {
 
   var listener: Listener? = null
 
+  private const val LOG_TAG = "VideoProvider"
+
   private const val PROGRESS_INTERVAL_MS = 500L
 
   /**
@@ -128,6 +130,17 @@ object PlayerCore {
   private var liveRecoveries = 0
   /** Last live-ness we told JS about, so we only emit on change. */
   private var reportedLive: Boolean? = null
+  /**
+   * Playback was interrupted hard enough that the video output may be stale.
+   *
+   * A network drop can leave the TextureView's SurfaceTexture pointing at
+   * nothing while the engine itself recovers — including when ExoPlayer retries
+   * on its own, with no error and no stall for anything upstream to react to.
+   * Playback resumes, audio and all, over a black frame that never clears.
+   * Re-asserting the output on the way back to READY covers every recovery,
+   * ours or the engine's.
+   */
+  private var videoOutputStale = false
 
   private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -239,7 +252,12 @@ object PlayerCore {
    * for YouTube, the loaded flag) forces the full load path instead.
    */
   fun reload() {
-    val source = currentSource ?: return
+    val source = currentSource
+    if (source == null) {
+      android.util.Log.w(LOG_TAG, "reload ignored: no current source")
+      return
+    }
+    android.util.Log.i(LOG_TAG, "reload type=${source.type} surface=$currentSurfaceId")
     currentVideoId = null
     if (source.type == "youtube") {
       // Force a full page load rather than a loadVideoById into a dead page.
@@ -808,7 +826,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     currentSurfaceId = surfaceId
     pendingSurfaceId = null
     if (engine == Engine.EXO) {
-      playerView?.let { reassertVideoOutput(it, surfaceId, container) }
+      playerView?.let { rebindPlayerToView(it, surfaceId, container) }
     }
     listener?.onAttach(surfaceId)
   }
@@ -831,28 +849,34 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
    * already parented in the target container, which it always is after a
    * rebuild, so the re-assert it would normally do never runs.
    */
+  /** Public entry point for JS: force a re-parent regardless of native state. */
+  fun reassertVideoOutput() = reassertActiveVideoOutput()
+
   private fun reassertActiveVideoOutput() {
     val id = currentSurfaceId ?: pendingSurfaceId ?: return
     val container = SurfaceRegistry.get(id)
     if (container == null) {
       // Surface not mounted yet — attach when it registers.
+      android.util.Log.w(LOG_TAG, "no container registered for surface=$id")
       pendingSurfaceId = id
       return
     }
-    if (engine != Engine.EXO) {
-      attach(id)
-      return
-    }
-    val pv = playerView ?: return
-    if (pv.parent !== container) {
-      // Genuinely detached: a normal attach re-parents and re-asserts.
-      attachTo(container, id)
-      return
-    }
-    reassertVideoOutput(pv, id, container)
+    val view = activeView() ?: return
+    android.util.Log.i(LOG_TAG, "re-attaching video output to surface=$id")
+    // Force the full detach -> attach cycle rather than just re-binding the
+    // player. PlayerView is TextureView-backed, and after a rebuild its
+    // SurfaceTexture is stale: the engine decodes into a surface nothing is
+    // showing, which is playback continuing (audio fine) over a black frame.
+    // Only re-parenting makes the TextureView produce a fresh SurfaceTexture.
+    //
+    // This is exactly what a viewer does by hand when they exit fullscreen and
+    // re-enter it: that unmounts and remounts the surface, and it fixes the
+    // black frame every time. Doing it here saves them the trip.
+    (view.parent as? ViewGroup)?.removeView(view)
+    attachTo(container, id)
   }
 
-  private fun reassertVideoOutput(
+  private fun rebindPlayerToView(
     pv: PlayerView,
     surfaceId: String,
     container: VideoSurfaceView,
@@ -874,6 +898,13 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
       when (state) {
         Player.STATE_BUFFERING -> listener?.onStatusChange("buffering")
         Player.STATE_READY -> {
+          // Back from a real interruption: rebuild the render path before
+          // anything else, or playback resumes into a surface nobody sees.
+          if (videoOutputStale) {
+            android.util.Log.i(LOG_TAG, "READY after interruption -> re-assert output")
+            videoOutputStale = false
+            reassertActiveVideoOutput()
+          }
           // Playing again — let a future stall spend a fresh recovery budget.
           liveRecoveries = 0
           reportLiveIfChanged()
@@ -892,7 +923,12 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
           listener?.onStatusChange("ended")
           listener?.onEnd()
         }
-        Player.STATE_IDLE -> listener?.onStatusChange("idle")
+        Player.STATE_IDLE -> {
+          // IDLE only follows a stop or a failure, never ordinary buffering,
+          // so it's a reliable marker that the output needs re-asserting.
+          videoOutputStale = true
+          listener?.onStatusChange("idle")
+        }
       }
     }
 
@@ -920,6 +956,8 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     }
 
     override fun onPlayerError(error: PlaybackException) {
+      android.util.Log.w(LOG_TAG, "player error: ${error.errorCodeName}")
+      videoOutputStale = true
       val exo = player
       if (exo != null && isRecoverableLiveError(error) && liveRecoveries < MAX_LIVE_RECOVERIES) {
         // Falling behind the live window (backgrounded, long stall, network

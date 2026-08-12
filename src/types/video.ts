@@ -152,4 +152,13 @@ export interface VideoProviderConfig {
    * Default true.
    */
   resumeOnFocus?: boolean;
+  /**
+   * Log playback-recovery decisions to the console, prefixed `[video]`.
+   *
+   * Recovery spans several independent mechanisms (connectivity changes, the
+   * stall watchdog, engine-side retries), and when a video fails to come back
+   * the useful question is which of them fired — something that is otherwise
+   * invisible from the outside. Off by default.
+   */
+  debug?: boolean;
 }
