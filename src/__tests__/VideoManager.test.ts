@@ -405,12 +405,15 @@ describe('VideoManager', () => {
       }) => void;
       onStatus({ status: 'playing' }); // was already playing throughout
 
+      jest.useFakeTimers();
       const handler = mockNetInfoListener!;
       handler({ isConnected: false, isInternetReachable: false });
-      native.reassertVideoOutput.mockClear();
+      native.reloadFromPosition.mockClear();
       handler({ isConnected: true, isInternetReachable: true });
+      jest.advanceTimersByTime(600);
 
       expect(native.reloadFromPosition).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
     });
 
     it('force re-parents on focus resume regardless of reported playing state', () => {
@@ -491,15 +494,18 @@ describe('VideoManager', () => {
     };
 
     it('rebuilds a NON-live video that failed while offline', () => {
+      jest.useFakeTimers();
       manager.setSource(video('vod1')); // never marked live
-      native.reload.mockClear();
+      native.reloadFromPosition.mockClear();
 
       setOnline(false);
       fireError();
       setOnline(true);
+      jest.advanceTimersByTime(600);
 
       // Live retry doesn't cover this source; reconnect recovery must.
       expect(native.reloadFromPosition).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
     });
 
     it('nudges an interrupted (but not errored) video and verifies it', () => {
@@ -517,6 +523,7 @@ describe('VideoManager', () => {
 
       setOnline(false);
       setOnline(true);
+      jest.advanceTimersByTime(600);
       expect(native.reloadFromPosition).toHaveBeenCalledWith(0);
       jest.useRealTimers();
     });

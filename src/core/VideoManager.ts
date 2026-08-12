@@ -216,6 +216,8 @@ export class VideoManager {
   private appStateSub: { remove: () => void } | null = null;
   /** Pending check that a focus-resume actually restarted playback. */
   private resumeVerifyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Pending timer for delayed reconnect recovery. */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Position snapshotted when verifyResume() is armed.
    *
@@ -914,15 +916,25 @@ export class VideoManager {
    * would restart playback under them.
    */
   private recoverAfterReconnect(): void {
-    const s = this.store.getState();
-    if (!s.currentVideo || this.userPaused) {
-      return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
     }
-    if (s.surfaceId) {
-      NativeVideo.attach(s.surfaceId);
-    }
-    this.log('reconnect -> reloadFromPosition', { status: s.status, live: s.live, pos: s.position });
-    this.reload(true);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      const s = this.store.getState();
+      if (!s.currentVideo || this.userPaused) {
+        return;
+      }
+      if (s.surfaceId) {
+        NativeVideo.attach(s.surfaceId);
+      }
+      this.log('reconnect -> reloadFromPosition (after 600ms delay)', {
+        status: s.status,
+        live: s.live,
+        pos: s.position,
+      });
+      this.reload(true);
+    }, 600);
   }
 
   /**
@@ -1127,6 +1139,10 @@ export class VideoManager {
     if (this.resumeVerifyTimer) {
       clearTimeout(this.resumeVerifyTimer);
       this.resumeVerifyTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
     this.clearStallWatchdog();
     this.stallRecoveries = 0;
