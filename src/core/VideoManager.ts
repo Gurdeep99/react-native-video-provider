@@ -768,6 +768,9 @@ export class VideoManager {
     if (!s.currentVideo) {
       return;
     }
+    // Re-enforce intent to play so recovery always autoplays
+    this.autoplayIntent = true;
+    this.userPaused = false;
     this.log('reload -> native', { preservePosition, position: s.position });
     this.set({ status: 'loading', loading: true, buffering: false, error: null });
     if (preservePosition) {

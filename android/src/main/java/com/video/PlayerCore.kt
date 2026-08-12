@@ -292,7 +292,7 @@ object PlayerCore {
     if (reportedLive != true) {
       pendingSeekAfterLoad = (position * 1000).toLong().coerceAtLeast(0L)
     } else {
-      pendingSeekAfterLoad = null
+      pendingSeekAfterLoad = -1L // signal to seek to live edge (default position)
     }
     reload()
   }
@@ -930,18 +930,18 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
             reassertActiveVideoOutput()
           }
           // If the rebuild was triggered by reloadFromPosition(), seek to the
-          // viewer's last known position now that the item is ready.
+          // viewer's last known position (or default live edge if live).
           val seekMs = pendingSeekAfterLoad
           if (seekMs != null) {
             pendingSeekAfterLoad = null
-            if (reportedLive != true) {
+            if (seekMs >= 0L && reportedLive != true) {
               exo.seekTo(seekMs)
+            } else if (reportedLive == true || seekMs == -1L) {
+              exo.seekToDefaultPosition()
             }
           }
           exo.playWhenReady = true
-          if (!exo.isPlaying) {
-            exo.play()
-          }
+          exo.play()
           // Playing again — let a future stall spend a fresh recovery budget.
           liveRecoveries = 0
           reportLiveIfChanged()
