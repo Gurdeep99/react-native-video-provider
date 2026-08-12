@@ -768,7 +768,7 @@ export class VideoManager {
     }
     this.log('reload -> native', { preservePosition, position: s.position });
     this.set({ status: 'loading', loading: true, buffering: false, error: null });
-    if (preservePosition && s.position > 0) {
+    if (preservePosition) {
       NativeVideo.reloadFromPosition(s.position);
     } else {
       NativeVideo.reload();
@@ -918,40 +918,11 @@ export class VideoManager {
     if (!s.currentVideo || this.userPaused) {
       return;
     }
-    if (s.status === 'error' || s.error) {
-      // A player that actually failed can't restart from play(): its item is
-      // terminal (or its WebView page is gone). Only a rebuild brings it back.
-      this.log('reconnect -> reload (errored)');
-      this.reload(true);
-      return;
+    if (s.surfaceId) {
+      NativeVideo.attach(s.surfaceId);
     }
-    if (this.autoplayIntent) {
-      // Not errored, just interrupted — nudge it, and let verifyResume rebuild
-      // if it turns out not to come back on its own.
-      //
-      // Re-attach the active surface BEFORE reassertVideoOutput(). On iOS the
-      // fullscreen player lives in a Modal whose UIKit view hierarchy can be
-      // silently recreated by the OS during a connectivity event, invalidating
-      // the UIView pointer stored in the native surface registry without ever
-      // triggering a JS unmount. When that happens reassertVideoOutput() looks
-      // up the registry, gets nil, and falls into a pendingSurfaceId wait that
-      // never resolves — the player keeps playing (audio) over a black frame.
-      // Calling attach() first refreshes the registry entry so the subsequent
-      // reassert can actually re-parent the AVPlayerLayer / TextureView.
-      if (s.surfaceId) {
-        NativeVideo.attach(s.surfaceId);
-      }
-      // reassertVideoOutput() unconditionally, same reasoning as
-      // resumeOnFocus: the engine can recover from a network drop on its own —
-      // buffering straight back to playing, no error, no idle transition — and
-      // when it does, nothing native marks the render surface stale. The
-      // reconnect itself is the evidence; acting on it directly is the only way
-      // to reach that case, since native never will on its own.
-      this.log('reconnect -> attach + reassert + play + verify', { status: s.status });
-      NativeVideo.reassertVideoOutput();
-      NativeVideo.play();
-      this.verifyResume();
-    }
+    this.log('reconnect -> reloadFromPosition', { status: s.status, live: s.live, pos: s.position });
+    this.reload(true);
   }
 
   /**
@@ -988,12 +959,10 @@ export class VideoManager {
       if (s.loading) {
         return;
       }
-      // For non-live sources, check that playback actually advanced. A player
-      // that reports 'playing' but whose position hasn't moved by at least 0.3 s
-      // in the verification window is frozen (buffer drained, no new frames
-      // decoded). Reload it the same as we do a player stuck in buffering.
-      const positionAdvanced =
-        s.live || Math.abs(s.position - this.lastVerifyPosition) > 0.3;
+      // Check that playback actually advanced. A player that reports 'playing'
+      // but whose position hasn't moved by at least 0.3 s in the verification
+      // window is frozen (buffer drained, no new frames decoded).
+      const positionAdvanced = Math.abs(s.position - this.lastVerifyPosition) > 0.3;
       if (s.playing && positionAdvanced) {
         return;
       }

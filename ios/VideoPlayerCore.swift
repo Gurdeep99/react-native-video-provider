@@ -385,12 +385,18 @@ public final class VideoPlayerCore: NSObject {
         // viewer's last known position now that the item is ready.
         if let seekTo = self.pendingSeekAfterLoad {
           self.pendingSeekAfterLoad = nil
-          let target = CMTime(seconds: seekTo, preferredTimescale: 600)
-          self.player.seek(
-            to: target, toleranceBefore: .zero, toleranceAfter: .zero
-          ) { [weak self] _ in
-            self?.player.play()
+          if self.reportedLive != true {
+            let target = CMTime(seconds: seekTo, preferredTimescale: 600)
+            self.player.seek(
+              to: target, toleranceBefore: .zero, toleranceAfter: .zero
+            ) { [weak self] _ in
+              self?.player.play()
+            }
+          } else {
+            self.player.play()
           }
+        } else if self.autoplayIntent || self.player.rate > 0 || self.player.timeControlStatus == .playing {
+          self.player.play()
         }
         // Playing again — let a future stall spend a fresh recovery budget.
         self.liveRecoveries = 0
@@ -459,7 +465,12 @@ public final class VideoPlayerCore: NSObject {
       reload()
       return
     }
-    pendingSeekAfterLoad = max(position, 0)
+    // Live streams should jump to the live edge on reload, not attempt to seek back.
+    if reportedLive != true {
+      pendingSeekAfterLoad = max(position, 0)
+    } else {
+      pendingSeekAfterLoad = nil
+    }
     reload()
   }
 

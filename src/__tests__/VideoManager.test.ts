@@ -410,7 +410,7 @@ describe('VideoManager', () => {
       native.reassertVideoOutput.mockClear();
       handler({ isConnected: true, isInternetReachable: true });
 
-      expect(native.reassertVideoOutput).toHaveBeenCalledTimes(1);
+      expect(native.reloadFromPosition).toHaveBeenCalledTimes(1);
     });
 
     it('force re-parents on focus resume regardless of reported playing state', () => {
@@ -499,7 +499,7 @@ describe('VideoManager', () => {
       setOnline(true);
 
       // Live retry doesn't cover this source; reconnect recovery must.
-      expect(native.reload).toHaveBeenCalledTimes(1);
+      expect(native.reloadFromPosition).toHaveBeenCalledTimes(1);
     });
 
     it('nudges an interrupted (but not errored) video and verifies it', () => {
@@ -517,11 +517,7 @@ describe('VideoManager', () => {
 
       setOnline(false);
       setOnline(true);
-      expect(native.play).toHaveBeenCalled();
-
-      // Still dead after the grace period — rebuild.
-      jest.advanceTimersByTime(5000);
-      expect(native.reload).toHaveBeenCalledTimes(1);
+      expect(native.reloadFromPosition).toHaveBeenCalledWith(0);
       jest.useRealTimers();
     });
 
@@ -549,7 +545,7 @@ describe('VideoManager', () => {
       onStatus({ status: 'buffering' });
 
       jest.advanceTimersByTime(5000);
-      expect(native.reload).toHaveBeenCalledTimes(1);
+      expect(native.reloadFromPosition).toHaveBeenCalledTimes(1);
       jest.useRealTimers();
     });
 
@@ -750,7 +746,7 @@ describe('VideoManager', () => {
       manager.attach('feed');
       // Engine never reports playing/buffering — it came back dead.
       jest.advanceTimersByTime(5000);
-      expect(native.reload).toHaveBeenCalledTimes(1);
+      expect(native.reloadFromPosition).toHaveBeenCalledTimes(1);
       jest.useRealTimers();
     });
 

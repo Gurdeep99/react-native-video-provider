@@ -289,7 +289,11 @@ object PlayerCore {
       reload()
       return
     }
-    pendingSeekAfterLoad = (position * 1000).toLong().coerceAtLeast(0L)
+    if (reportedLive != true) {
+      pendingSeekAfterLoad = (position * 1000).toLong().coerceAtLeast(0L)
+    } else {
+      pendingSeekAfterLoad = null
+    }
     reload()
   }
 
@@ -930,8 +934,13 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
           val seekMs = pendingSeekAfterLoad
           if (seekMs != null) {
             pendingSeekAfterLoad = null
-            exo.seekTo(seekMs)
-            exo.playWhenReady = true
+            if (reportedLive != true) {
+              exo.seekTo(seekMs)
+            }
+          }
+          exo.playWhenReady = true
+          if (!exo.isPlaying) {
+            exo.play()
           }
           // Playing again — let a future stall spend a fresh recovery budget.
           liveRecoveries = 0
