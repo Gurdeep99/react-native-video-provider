@@ -118,6 +118,9 @@ object PlayerCore {
   private var currentVideoId: String? = null
   /** Retained so reload() can rebuild the source without JS re-sending it. */
   private var currentSource: SourceSpec? = null
+  /// Position to seek to once the next newly loaded item reaches STATE_READY.
+  /// Set by reloadFromPosition() so the viewer's position survives a rebuild.
+  private var pendingSeekAfterLoad: Long? = null
   private var currentSurfaceId: String? = null
 
   /** Surface we want but that hasn't registered (yet, or again). */
@@ -271,7 +274,24 @@ object PlayerCore {
     reassertActiveVideoOutput()
   }
 
-  // ----------------------------------------------------------- youtube engine
+  /**
+   * Rebuild the current source and seek to [position] (seconds) once the new
+   * item is ready, so the viewer resumes from where they were watching rather
+   * than restarting from the source's startPosition.
+   *
+   * YouTube sources fall back to a plain reload() because seeking into a
+   * freshly loaded IFrame page is unreliable — the player may not be fully
+   * initialised when the seek command arrives.
+   */
+  fun reloadFromPosition(position: Double) {
+    val source = currentSource
+    if (source == null || source.type == "youtube") {
+      reload()
+      return
+    }
+    pendingSeekAfterLoad = (position * 1000).toLong().coerceAtLeast(0L)
+    reload()
+  }
 
   @SuppressLint("SetJavaScriptEnabled")
   private fun ensureWebView(): WebView {
@@ -904,6 +924,14 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
             android.util.Log.i(LOG_TAG, "READY after interruption -> re-assert output")
             videoOutputStale = false
             reassertActiveVideoOutput()
+          }
+          // If the rebuild was triggered by reloadFromPosition(), seek to the
+          // viewer's last known position now that the item is ready.
+          val seekMs = pendingSeekAfterLoad
+          if (seekMs != null) {
+            pendingSeekAfterLoad = null
+            exo.seekTo(seekMs)
+            exo.playWhenReady = true
           }
           // Playing again — let a future stall spend a fresh recovery budget.
           liveRecoveries = 0

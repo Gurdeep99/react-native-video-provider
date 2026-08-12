@@ -80,6 +80,19 @@ export function VideoControls({
     };
   }, [visible, playing, scheduleHide]);
 
+  // When the player starts loading or buffering (e.g. after a network-recovery
+  // reload), force the controls visible so the spinner is shown over the
+  // darkened chrome overlay rather than over the raw frozen frame. When the
+  // player recovers and starts playing, the existing auto-hide kicks in and
+  // schedules the controls to fade out after `hideAfter` ms.
+  useEffect(() => {
+    if (loading || buffering) {
+      setVisible(true);
+    } else if (playing) {
+      scheduleHide();
+    }
+  }, [loading, buffering, playing, scheduleHide]);
+
   const toggleVisible = useCallback(() => setVisible((v) => !v), []);
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {

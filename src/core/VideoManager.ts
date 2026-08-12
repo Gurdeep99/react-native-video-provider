@@ -216,6 +216,16 @@ export class VideoManager {
   private appStateSub: { remove: () => void } | null = null;
   /** Pending check that a focus-resume actually restarted playback. */
   private resumeVerifyTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Position snapshotted when verifyResume() is armed.
+   *
+   * Used to detect a "playing but frozen" player: with
+   * automaticallyWaitsToMinimizeStalling=false on iOS the native player can
+   * keep timeControlStatus==.playing while outputting the last decoded frame
+   * (buffer empty, no new data). s.playing==true would normally let verifyResume
+   * pass, but if the position didn't actually advance the video is still stuck.
+   */
+  private lastVerifyPosition: number = 0;
   /** Armed while the player is stuck buffering or errored. */
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   /** Stall rebuilds since playback last actually ran. */
@@ -751,13 +761,18 @@ export class VideoManager {
    * AVPlayerItem or an errored YouTube page never recovers from that, which is
    * why a live stream came back to a black screen after the network returned.
    */
-  reload(): void {
-    if (!this.store.getState().currentVideo) {
+  reload(preservePosition = false): void {
+    const s = this.store.getState();
+    if (!s.currentVideo) {
       return;
     }
-    this.log('reload -> native');
-    this.set({ status: 'loading', loading: true, error: null });
-    NativeVideo.reload();
+    this.log('reload -> native', { preservePosition, position: s.position });
+    this.set({ status: 'loading', loading: true, buffering: false, error: null });
+    if (preservePosition && s.position > 0) {
+      NativeVideo.reloadFromPosition(s.position);
+    } else {
+      NativeVideo.reload();
+    }
   }
 
   // ------------------------------------------------------ live retry
@@ -907,7 +922,7 @@ export class VideoManager {
       // A player that actually failed can't restart from play(): its item is
       // terminal (or its WebView page is gone). Only a rebuild brings it back.
       this.log('reconnect -> reload (errored)');
-      this.reload();
+      this.reload(true);
       return;
     }
     if (this.autoplayIntent) {
@@ -946,8 +961,20 @@ export class VideoManager {
    * restart from play() alone — a WebView whose page was discarded, or an item
    * the OS tore down. Waiting a beat and checking real state distinguishes
    * "still spinning up" (fine) from "never came back" (needs a reload).
+   *
+   * We also check whether position actually advanced, not just whether the JS
+   * state says "playing". With automaticallyWaitsToMinimizeStalling=false on
+   * iOS, AVPlayer keeps timeControlStatus==.playing while showing a frozen last
+   * frame (buffer empty, no new data — s.playing==true but no decode progress).
+   * In that state every other watchdog is blind: verifyResume used to pass on
+   * s.playing, and the stall watchdog only arms on 'buffering' or 'error'.
+   * The position delta catches it: a playing video moves; a frozen one does not.
+   * Live streams always report position=0 so they are excluded from the check
+   * — the live-retry + stall watchdogs already cover those.
    */
   private verifyResume(): void {
+    // Snapshot position at arm-time so we can measure progress at expiry.
+    this.lastVerifyPosition = this.store.getState().position;
     if (this.resumeVerifyTimer) {
       clearTimeout(this.resumeVerifyTimer);
     }
@@ -957,16 +984,26 @@ export class VideoManager {
       if (!s.currentVideo || this.userPaused) {
         return;
       }
-      // Only actual playback counts as recovered. Treating `buffering` as
-      // healthy was wrong: a native player whose connection dropped mid-stream
-      // sits in buffering indefinitely and never errors, so exempting it meant
-      // the rebuild never ran and the viewer kept staring at a black screen.
-      // `loading` is exempt because that IS a rebuild already in flight.
-      if (s.playing || s.loading) {
+      // Loading means a rebuild is already in flight — give it time.
+      if (s.loading) {
         return;
       }
-      this.log('resume did not take -> reload', { status: s.status });
-      this.reload();
+      // For non-live sources, check that playback actually advanced. A player
+      // that reports 'playing' but whose position hasn't moved by at least 0.3 s
+      // in the verification window is frozen (buffer drained, no new frames
+      // decoded). Reload it the same as we do a player stuck in buffering.
+      const positionAdvanced =
+        s.live || Math.abs(s.position - this.lastVerifyPosition) > 0.3;
+      if (s.playing && positionAdvanced) {
+        return;
+      }
+      this.log('resume did not take -> reload', {
+        status: s.status,
+        position: s.position,
+        lastVerifyPosition: this.lastVerifyPosition,
+        positionAdvanced,
+      });
+      this.reload(true);
     }, RESUME_VERIFY_MS);
   }
 
@@ -1128,6 +1165,7 @@ export class VideoManager {
     // or a fresh player would inherit the previous session's decisions.
     this.mutedUserSet = false;
     this.userPaused = false;
+    this.lastVerifyPosition = 0;
     this.events.removeAll();
     this.initialized = false;
     this.lastInlineSurfaceId = null;

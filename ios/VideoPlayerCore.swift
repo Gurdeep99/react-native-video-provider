@@ -174,6 +174,9 @@ public final class VideoPlayerCore: NSObject {
   private var videoOutputStale = false
   /// Retained so a failed item can be rebuilt from the same source.
   private var currentSource: VideoSourceSpec?
+  /// Position to seek to once the next newly loaded item reaches readyToPlay.
+  /// Set by reloadFromPosition() so the viewer's position survives a rebuild.
+  private var pendingSeekAfterLoad: Double? = nil
 
   private var timeObserver: Any?
   private var timeControlObservation: NSKeyValueObservation?
@@ -378,6 +381,17 @@ public final class VideoPlayerCore: NSObject {
           self.videoOutputStale = false
           self.reassertActiveVideoOutput()
         }
+        // If the rebuild was triggered by reloadFromPosition(), seek to the
+        // viewer's last known position now that the item is ready.
+        if let seekTo = self.pendingSeekAfterLoad {
+          self.pendingSeekAfterLoad = nil
+          let target = CMTime(seconds: seekTo, preferredTimescale: 600)
+          self.player.seek(
+            to: target, toleranceBefore: .zero, toleranceAfter: .zero
+          ) { [weak self] _ in
+            self?.player.play()
+          }
+        }
         // Playing again — let a future stall spend a fresh recovery budget.
         self.liveRecoveries = 0
         self.reportLiveIfChanged()
@@ -437,7 +451,17 @@ public final class VideoPlayerCore: NSObject {
     reassertActiveVideoOutput()
   }
 
-  // ----------------------------------------------------------- youtube engine
+  /// Rebuild the current source and seek to `position` once ready,
+  /// so the viewer resumes from where they were (not from startPosition).
+  /// No-op for YouTube sources (no reliable mid-stream seek on a fresh IFrame page).
+  @objc public func reloadFromPosition(_ position: Double) {
+    guard let source = currentSource, source.type != "youtube" else {
+      reload()
+      return
+    }
+    pendingSeekAfterLoad = max(position, 0)
+    reload()
+  }
 
   private func setYouTube(_ source: VideoSourceSpec, autoplay: Bool) {
     if engine == .exo { player.pause() }

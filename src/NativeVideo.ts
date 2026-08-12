@@ -82,6 +82,14 @@ export interface Spec extends TurboModule {
   reload(): void;
 
   /**
+   * Like `reload()` but seeks to `position` (seconds) after the item is ready,
+   * so the viewer resumes from where they were rather than restarting from 0.
+   * Ignored for YouTube sources (no reliable mid-stream seek on a fresh page)
+   * and clamped to [0, duration] on the native side.
+   */
+  reloadFromPosition(position: number): void;
+
+  /**
    * Force the engine's video output back onto its current surface.
    *
    * For engines like ExoPlayer's TextureView, an interruption can leave the

@@ -63,6 +63,10 @@ class VideoModule(reactContext: ReactApplicationContext) :
     UiThreadUtil.runOnUiThread { PlayerCore.reload() }
   }
 
+  override fun reloadFromPosition(position: Double) {
+    UiThreadUtil.runOnUiThread { PlayerCore.reloadFromPosition(position) }
+  }
+
   override fun reassertVideoOutput() {
     UiThreadUtil.runOnUiThread { PlayerCore.reassertVideoOutput() }
   }
