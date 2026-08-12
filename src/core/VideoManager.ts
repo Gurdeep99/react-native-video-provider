@@ -914,13 +914,25 @@ export class VideoManager {
       // Not errored, just interrupted — nudge it, and let verifyResume rebuild
       // if it turns out not to come back on its own.
       //
+      // Re-attach the active surface BEFORE reassertVideoOutput(). On iOS the
+      // fullscreen player lives in a Modal whose UIKit view hierarchy can be
+      // silently recreated by the OS during a connectivity event, invalidating
+      // the UIView pointer stored in the native surface registry without ever
+      // triggering a JS unmount. When that happens reassertVideoOutput() looks
+      // up the registry, gets nil, and falls into a pendingSurfaceId wait that
+      // never resolves — the player keeps playing (audio) over a black frame.
+      // Calling attach() first refreshes the registry entry so the subsequent
+      // reassert can actually re-parent the AVPlayerLayer / TextureView.
+      if (s.surfaceId) {
+        NativeVideo.attach(s.surfaceId);
+      }
       // reassertVideoOutput() unconditionally, same reasoning as
       // resumeOnFocus: the engine can recover from a network drop on its own —
       // buffering straight back to playing, no error, no idle transition — and
       // when it does, nothing native marks the render surface stale. The
       // reconnect itself is the evidence; acting on it directly is the only way
       // to reach that case, since native never will on its own.
-      this.log('reconnect -> reassert + play + verify', { status: s.status });
+      this.log('reconnect -> attach + reassert + play + verify', { status: s.status });
       NativeVideo.reassertVideoOutput();
       NativeVideo.play();
       this.verifyResume();

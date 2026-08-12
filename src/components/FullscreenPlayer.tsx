@@ -59,6 +59,7 @@ export function FullscreenPlayer() {
   const manager = useVideoManager();
   const fullscreen = usePlayback((s) => s.fullscreen);
   const fullscreenLock = usePlayback((s) => s.fullscreenLock);
+  const online = usePlayback((s) => s.online);
 
   // Android hardware back exits fullscreen (the iOS Modal handles its own).
   useEffect(() => {
@@ -71,6 +72,26 @@ export function FullscreenPlayer() {
     });
     return () => sub.remove();
   }, [manager, fullscreen]);
+
+  // Re-attach the fullscreen surface whenever connectivity is restored while
+  // fullscreen is active.
+  //
+  // A network drop can cause iOS UIKit to silently recreate the Modal's view
+  // hierarchy, which invalidates the UIView pointer held by the native surface
+  // registry without triggering a JS unmount. When that happens,
+  // reassertVideoOutput() can't find the container and the player stays parented
+  // to a stale (invisible) view — audio plays, black screen.
+  //
+  // Calling attach() here refreshes the registry pointer: the surface is still
+  // mounted, so the native view is valid; attach() re-parents the AVPlayerLayer
+  // / TextureView into it, clearing the black frame. This runs on every online
+  // change so that an offline → online transition always heals the output.
+  useEffect(() => {
+    if (!fullscreen) {
+      return;
+    }
+    manager.attach(FULLSCREEN_SURFACE_ID);
+  }, [manager, fullscreen, online]);
 
   if (!fullscreen) {
     return null;
