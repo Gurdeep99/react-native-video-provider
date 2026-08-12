@@ -9,6 +9,7 @@ jest.mock('../NativeVideo', () => ({
     setSource: jest.fn(),
     preload: jest.fn(),
     reload: jest.fn(),
+    reloadFromPosition: jest.fn(),
     reassertVideoOutput: jest.fn(),
     play: jest.fn(),
     pause: jest.fn(),
@@ -759,6 +760,7 @@ describe('VideoManager', () => {
       fireLoaded();
       manager.pauseForFocusLoss();
       native.reload.mockClear();
+      native.reloadFromPosition.mockClear();
 
       manager.attach('feed');
       const onStatus = native.onStatusChange.mock.calls.at(-1)?.[0] as (e: {
@@ -766,8 +768,18 @@ describe('VideoManager', () => {
       }) => void;
       onStatus({ status: 'playing' });
 
+      const onProgress = native.onProgress.mock.calls.at(-1)?.[0] as (e: {
+        position: number;
+        duration: number;
+        buffered: number;
+      }) => void;
+      if (onProgress) {
+        onProgress({ position: 1.5, duration: 120, buffered: 10 });
+      }
+
       jest.advanceTimersByTime(5000);
       expect(native.reload).not.toHaveBeenCalled();
+      expect(native.reloadFromPosition).not.toHaveBeenCalled();
       jest.useRealTimers();
     });
 
