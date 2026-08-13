@@ -395,7 +395,7 @@ public final class VideoPlayerCore: NSObject {
           } else {
             self.player.play()
           }
-        } else if self.autoplayIntent || self.player.rate > 0 || self.player.timeControlStatus == .playing {
+        } else if self.player.rate > 0 || self.player.timeControlStatus == .playing {
           self.player.play()
         }
         // Playing again — let a future stall spend a fresh recovery budget.
