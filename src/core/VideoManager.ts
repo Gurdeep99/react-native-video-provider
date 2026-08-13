@@ -202,6 +202,19 @@ export class VideoManager {
   /** The current source was set with autoplay, so focus may resume it. */
   private autoplayIntent = true;
   /**
+   * Pause the current video when the app backgrounds, regardless of which
+   * surface owns it right now.
+   *
+   * Tracked here rather than per-component (as it once was) because surface
+   * ownership moves — inline to fullscreen to floating — while the video
+   * itself doesn't. A component-scoped "am I the active surface" check breaks
+   * the moment fullscreen or floating takes over: the original component's
+   * check goes false, and nothing else is listening, so the video plays on
+   * in the background indefinitely. This follows the same per-source
+   * lifetime as autoplayIntent, set at setSource() and surviving handoffs.
+   */
+  private pauseOnFocusLostIntent = true;
+  /**
    * The viewer paused on purpose. Focus must not undo that — without this,
    * scrolling a paused video out of view and back would restart it.
    */
@@ -281,8 +294,30 @@ export class VideoManager {
     this.appStateSub = appState.addEventListener('change', (state) => {
       if (state === 'active') {
         this.resumeOnFocus();
+      } else {
+        this.pauseOnBackground();
       }
     });
+  }
+
+  /**
+   * Pause the current video when the app leaves the foreground.
+   *
+   * Surface-independent by design — see `pauseOnFocusLostIntent`. Skips PiP
+   * on purpose: PiP exists specifically so playback continues once the app is
+   * backgrounded, so pausing here would defeat the feature entirely.
+   */
+  private pauseOnBackground(): void {
+    if (!this.pauseOnFocusLostIntent) {
+      return;
+    }
+    const s = this.store.getState();
+    if (!s.currentVideo || s.pip) {
+      return;
+    }
+    // pauseForFocusLoss(), not pause(): this is a lifecycle event, not the
+    // viewer's choice, and must not block resumeOnFocus() on the way back.
+    this.pauseForFocusLoss();
   }
 
   private setupNetInfo(): void {
@@ -523,6 +558,7 @@ export class VideoManager {
       this.clearLiveRetry();
       // A new source carries its own autoplay intent and clears the pause latch.
       this.autoplayIntent = autoplay;
+      this.pauseOnFocusLostIntent = options?.pauseOnFocusLost ?? true;
       this.userPaused = false;
       this.clearStallWatchdog();
       this.stallRecoveries = 0;
@@ -1077,6 +1113,29 @@ export class VideoManager {
     }
   }
 
+  /**
+   * Alias of {@link enterFullscreen}, for imperative use via a `ref`:
+   *
+   * ```tsx
+   * const videoRef = useRef<VideoManager>(null);
+   * <VideoPlayer ref={videoRef} source={video} />
+   * videoRef.current?.ShowVideoFullScreenTrigger();
+   * ```
+   *
+   * `ref` on `VideoPlayer` already exposes this VideoManager directly (see
+   * `useImperativeHandle` in VideoPlayer.tsx), so this needs no wiring beyond
+   * the method itself — it's a no-op until the component has actually
+   * mounted and produced a manager instance to call it on.
+   */
+  ShowVideoFullScreenTrigger(orientation?: OrientationLock): void {
+    this.enterFullscreen(orientation);
+  }
+
+  /** Alias of {@link exitFullscreen} — see {@link ShowVideoFullScreenTrigger}. */
+  ExitVideoFullScreenTrigger(): void {
+    this.exitFullscreen();
+  }
+
   showFloating(): void {
     if (this.store.getState().floating) {
       return;
@@ -1153,6 +1212,7 @@ export class VideoManager {
     // or a fresh player would inherit the previous session's decisions.
     this.mutedUserSet = false;
     this.userPaused = false;
+    this.pauseOnFocusLostIntent = true;
     this.lastVerifyPosition = 0;
     this.events.removeAll();
     this.initialized = false;

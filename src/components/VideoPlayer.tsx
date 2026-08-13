@@ -5,13 +5,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import {
-  AppState,
-  Dimensions,
-  StyleSheet,
-  View,
-  type ViewProps,
-} from 'react-native';
+import { Dimensions, StyleSheet, View, type ViewProps } from 'react-native';
 import { VideoManager } from '../core/VideoManager';
 import { useVideoManager } from '../provider/VideoContext';
 import { usePlayback } from '../hooks/usePlayback';
@@ -194,6 +188,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       manager.setSource(source, {
         autoplay: autoplay && isFocused !== false,
         surfaceId: id,
+        pauseOnFocusLost,
       });
       // Attach on mount / when the video identity changes. Other source
       // fields (title, headers) don't retrigger: identity is source.id.
@@ -315,21 +310,11 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       return () => sub.remove();
     }, [manager, id, rotateIntoFullscreen]);
 
-    useEffect(() => {
-      if (!pauseOnFocusLost) {
-        return;
-      }
-      const sub = AppState.addEventListener('change', (next) => {
-        // Only the player currently owning the engine reacts, so a video
-        // attached to another surface keeps playing untouched.
-        if (next !== 'active' && manager.store.getState().surfaceId === id) {
-          // A lifecycle pause, not a viewer decision — so it must not block
-          // the focus-resume that runs when the app comes back.
-          manager.pauseForFocusLoss();
-        }
-      });
-      return () => sub.remove();
-    }, [manager, id, pauseOnFocusLost]);
+    // pauseOnFocusLost itself is handled by VideoManager (see setSource's
+    // pauseOnFocusLostIntent) — surface-independent by design, so it keeps
+    // working when the video moves to fullscreen or floating. A component-
+    // local, surfaceId-scoped listener here would silently stop firing the
+    // moment ownership moved off this component's own surface.
 
     useEffect(() => {
       if (isFocused === undefined) {

@@ -555,8 +555,16 @@ function revive(){
   if(revives++>=5||!player)return;
   try{player.loadVideoById(cur);tries=0;setTimeout(kick,500);}catch(e){}
 }
+// Tracks whether WE told the player to pause, vs. YouTube pausing itself
+// (page-visibility quirks, ad transitions, minor hiccups — all with no
+// pauseVideo command from us). A live broadcast should never just sit
+// paused, but an app-requested pause must still work.
+var explicitPause=false;
+var pauseResumes=0;
 window.auCmd=function(f,a){try{
-  if(f==='loadVideoById'||f==='cueVideoById'){cur=a[0];revives=0;}
+  if(f==='loadVideoById'||f==='cueVideoById'){cur=a[0];revives=0;pauseResumes=0;}
+  if(f==='pauseVideo')explicitPause=true;
+  if(f==='playVideo')explicitPause=false;
   player&&player[f]&&player[f].apply(player,a);
   if(f==='loadVideoById'||f==='playVideo'){tries=0;setTimeout(kick,300);}}catch(e){}};
 var t=document.createElement('script');t.src='https://www.youtube.com/iframe_api';document.body.appendChild(t);
@@ -571,9 +579,18 @@ function onYouTubeIframeAPIReady(){
         if($auto){try{player.playVideo();}catch(e){}tries=0;kick();}
       },
       onStateChange:function(e){
-        if(e.data===1)revives=0;
+        if(e.data===1){revives=0;pauseResumes=0;}
         // Live feeds don't "end" — a 0 state means the broadcast dropped.
         if(e.data===0&&isLive()){revive();return;}
+        // A live feed pausing itself with no pauseVideo from us is the
+        // player misbehaving, not the viewer's choice — nudge it back
+        // rather than surfacing a pause nobody asked for. Capped so a
+        // genuinely broken embed doesn't spin here forever; an explicit
+        // pause() is never touched, since explicitPause guards it.
+        if(e.data===2&&isLive()&&!explicitPause&&pauseResumes++<5){
+          try{player.playVideo();}catch(e){}
+          return;
+        }
         post({type:'state',state:e.data,live:isLive()});
       },
       // 2/5 are transient player faults on a valid video; 100/101/150 mean the

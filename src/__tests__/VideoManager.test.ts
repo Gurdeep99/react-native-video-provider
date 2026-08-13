@@ -59,6 +59,29 @@ jest.mock(
   { virtual: true }
 );
 
+// getAppState() does `require('react-native').AppState` lazily, inside a
+// try/catch — without this mock that require() fails (this project has no
+// react-native jest preset) and is silently swallowed, meaning the real
+// module is never exercised by these tests at all. Virtual because nothing
+// else in the tested code path touches real react-native exports.
+let mockAppStateListener: ((state: string) => void) | null = null;
+jest.mock(
+  'react-native',
+  () => ({
+    __esModule: true,
+    AppState: {
+      addEventListener: (
+        _type: 'change',
+        cb: (state: string) => void
+      ) => {
+        mockAppStateListener = cb;
+        return { remove: () => {} };
+      },
+    },
+  }),
+  { virtual: true }
+);
+
 const native = NativeVideo as jest.Mocked<typeof NativeVideo>;
 
 const video = (id: string): VideoSource => ({
@@ -382,6 +405,93 @@ describe('VideoManager', () => {
 
       manager.exitFullscreen();
       expect(manager.store.getState().muted).toBe(true);
+    });
+  });
+
+  describe('pause on app background (surface-independent)', () => {
+    const backgroundTheApp = () => mockAppStateListener?.('background');
+
+    it('pauses fullscreen playback when the app backgrounds', () => {
+      // The exact reported bug: entering fullscreen moves surfaceId to
+      // FULLSCREEN_SURFACE_ID. A surface-scoped listener bound to the
+      // original inline id would silently stop firing right here.
+      manager.setSource(video('a'), { surfaceId: 'feed' });
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+      native.pause.mockClear();
+
+      backgroundTheApp();
+      expect(native.pause).toHaveBeenCalledTimes(1);
+    });
+
+    it('pauses floating playback the same way', () => {
+      manager.setSource(video('a'), { surfaceId: 'feed' });
+      manager.showFloating();
+      native.pause.mockClear();
+
+      backgroundTheApp();
+      expect(native.pause).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not pause while PiP is active', async () => {
+      manager.setSource(video('a'), { surfaceId: 'feed' });
+      await manager.enterPiP();
+      // store.pip flips via the native onPipChange event, not synchronously
+      // inside enterPiP() itself — fire it as the real native side would.
+      const onPipChange = native.onPipChange.mock.calls.at(-1)?.[0] as (e: {
+        active: boolean;
+      }) => void;
+      onPipChange({ active: true });
+      native.pause.mockClear();
+
+      backgroundTheApp();
+      expect(native.pause).not.toHaveBeenCalled();
+    });
+
+    it('respects pauseOnFocusLost: false (background-audio use case)', () => {
+      manager.setSource(video('a'), {
+        surfaceId: 'feed',
+        pauseOnFocusLost: false,
+      });
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+      native.pause.mockClear();
+
+      backgroundTheApp();
+      expect(native.pause).not.toHaveBeenCalled();
+    });
+
+    it('a background pause does not block the later focus resume', () => {
+      manager.setSource(video('a'), { surfaceId: 'feed', autoplay: true });
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+
+      backgroundTheApp();
+      native.play.mockClear();
+      mockAppStateListener?.('active'); // back to foreground
+
+      expect(native.play).toHaveBeenCalled();
+    });
+  });
+
+  describe('ShowVideoFullScreenTrigger / ExitVideoFullScreenTrigger (ref aliases)', () => {
+    it('ShowVideoFullScreenTrigger behaves exactly like enterFullscreen', () => {
+      manager.attach('feed');
+      manager.ShowVideoFullScreenTrigger('portrait');
+
+      expect(native.enterFullscreen).toHaveBeenLastCalledWith('portrait');
+      expect(manager.store.getState().fullscreen).toBe(true);
+    });
+
+    it('ExitVideoFullScreenTrigger behaves exactly like exitFullscreen', () => {
+      manager.attach('feed');
+      manager.ShowVideoFullScreenTrigger();
+      manager.ExitVideoFullScreenTrigger();
+
+      expect(native.exitFullscreen).toHaveBeenLastCalledWith('auto');
+      expect(manager.store.getState().fullscreen).toBe(false);
+      // Player returned to the surface it came from, same as exitFullscreen.
+      expect(native.attach).toHaveBeenLastCalledWith('feed');
     });
   });
 

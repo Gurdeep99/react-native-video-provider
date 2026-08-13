@@ -110,6 +110,13 @@ export interface SetSourceOptions {
   autoplay?: boolean;
   /** Attach the player to this surface as part of setting the source. */
   surfaceId?: string;
+  /**
+   * Pause this video when the app backgrounds — regardless of which surface
+   * currently owns it (inline, fullscreen, floating). Default true; skipped
+   * automatically while PiP is active, since PiP exists to keep playing in
+   * the background. Set false for background-audio-style playback.
+   */
+  pauseOnFocusLost?: boolean;
 }
 
 export interface VideoProviderConfig {
