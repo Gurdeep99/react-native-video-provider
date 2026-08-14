@@ -1,6 +1,22 @@
-# react-native-video-provider
+<p align="center">
+  <img src="./docs/react-native-video-provider.png" alt="react-native-video-provider" width="100%" />
+</p>
 
-**One native player. Many surfaces. Zero interruptions.**
+<p align="center">
+  <a href="https://www.npmjs.com/package/react-native-video-provider"><img src="https://img.shields.io/npm/v/react-native-video-provider.svg" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/react-native-video-provider"><img src="https://img.shields.io/npm/l/react-native-video-provider.svg" alt="license" /></a>
+  <img src="https://img.shields.io/badge/platform-android%20%7C%20ios-3DDC84" alt="platform" />
+  <img src="https://img.shields.io/badge/architecture-new-orange" alt="new architecture" />
+</p>
+
+<h1 align="center">React Native Video Provider</h1>
+<p align="center"><strong>One native player. Many surfaces. Zero interruptions.</strong></p>
+
+<p align="center">
+  <a href="https://docs.gurdeep.net/package/react-native-video-controller">
+    <img src="https://img.shields.io/badge/Documentation-1f6feb?style=for-the-badge" alt="Documentation" />
+  </a>
+</p>
 
 A singleton-engine video library for React Native (Android + iOS, New
 Architecture). The app owns exactly one native playback engine (ExoPlayer /
@@ -35,6 +51,19 @@ Feed ──▶ Detail ──▶ Fullscreen (rotation unlocked) ──▶ Floatin
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and
 [docs/API.md](docs/API.md) for the complete API reference.
+
+## Contents
+
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Surfaces (the core idea)](#surfaces-the-core-idea)
+- [Video feed](#video-feed-single-engine-only-the-focused-one-plays)
+- [Pausing on focus loss](#pausing-on-focus-loss)
+- [State & events](#state--events)
+- [Platform setup](#platform-setup)
+- [Example app](#example-app)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
 
 ## Installation
 
@@ -147,6 +176,9 @@ landscape in its Info.plist and forward orientation from the AppDelegate (see
 [Platform setup](#ios--fullscreen-rotation)), or the OS won't permit rotation
 at all.
 
+<details>
+<summary><strong>Full orientation reference</strong> — sensor-driven fullscreen entry, standing locks, and how the two rotation props compose</summary>
+
 To also stop the *inline* video from sensor-rotating with the rest of the app,
 set `lockPortrait` on the provider — the app stays portrait and only fullscreen
 rotates:
@@ -186,6 +218,8 @@ player.setOrientation('auto'); // release
 On iOS this needs the AppDelegate forwarding shown in
 [Platform setup](#ios--fullscreen-rotation). Inverted portrait is ignored by
 iPhones without a home button (the OS doesn't allow it).
+
+</details>
 
 ## Surfaces (the core idea)
 
@@ -314,12 +348,14 @@ func application(_ application: UIApplication,
 }
 ```
 
-**If your app swizzles RN modal orientation.** Some apps override
-`RCTModalHostViewController.supportedInterfaceOrientations` to force an
-app-wide orientation. That swizzle also applies to this library's fullscreen
-host (an RN `Modal`) and will pin it — landscape fullscreen then silently
-fails on iOS while working on Android. Route the swizzle through the library
-too:
+<details>
+<summary>If your app swizzles RN modal orientation</summary>
+
+Some apps override `RCTModalHostViewController.supportedInterfaceOrientations`
+to force an app-wide orientation. That swizzle also applies to this library's
+fullscreen host (an RN `Modal`) and will pin it — landscape fullscreen then
+silently fails on iOS while working on Android. Route the swizzle through the
+library too:
 
 ```swift
 extension UIViewController {
@@ -328,6 +364,8 @@ extension UIViewController {
   }
 }
 ```
+
+</details>
 
 **Orientation is app-wide, not per-player.** `VideoOrientation` is the single
 authority, so use it for *other* players/screens too rather than patching them
@@ -370,12 +408,17 @@ fullscreen, floating and PiP buttons.
 
 ## Roadmap
 
+<details>
+<summary>Not yet built — expand for the full list</summary>
+
 - Queue (next/previous/playlist/autoplay)
 - Background playback (Android MediaSessionService + notification, iOS remote
   commands / lock-screen controls)
 - Quality, subtitle and audio-track selection
 - Brightness/volume swipe gestures, pinch zoom
 - True ahead-of-time preloading (Media3 `PreloadManager`)
+
+</details>
 
 ## Contributing
 
