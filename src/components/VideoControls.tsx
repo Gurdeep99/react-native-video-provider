@@ -24,6 +24,14 @@ export interface VideoControlsProps {
   showFullscreenButton?: boolean;
   /** Called by the close (✕) button; button hidden when omitted. */
   onClose?: () => void;
+  /**
+   * Shown instead of the loading spinner while stalled with no connectivity.
+   * Default `'No Internet Connection'`. The engine keeps retrying underneath
+   * (see `liveAutoRetry` / reconnect recovery) — this only changes what the
+   * viewer sees while it's stuck: an indefinite spinner reads as broken,
+   * where naming the actual cause doesn't.
+   */
+  offlineMessage?: string;
 }
 
 /**
@@ -38,6 +46,7 @@ export function VideoControls({
   hideAfter = 3000,
   showFullscreenButton = true,
   onClose,
+  offlineMessage = 'No Internet Connection',
 }: VideoControlsProps) {
   const manager = useVideoManager();
   const playing = usePlayback((s) => s.playing);
@@ -50,13 +59,13 @@ export function VideoControls({
   const fullscreen = usePlayback((s) => s.fullscreen);
   const live = usePlayback((s) => s.live);
   const liveIcon = usePlayback((s) => s.liveIcon);
+  const online = usePlayback((s) => s.online);
 
-  // Once a live feed starts arriving (playing, or buffer/position advancing),
-  // drop the initial loader even if the engine still reports `loading`.
   const feedArriving = playing || buffered > 0 || position > 0;
   const showLoader = live
     ? (loading || buffering) && !feedArriving
     : loading || buffering;
+  const showOffline = !online && (loading || buffering);
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -210,8 +219,17 @@ export function VideoControls({
       ) : null}
       {/* Center loader — shown during initial load / buffering regardless of
           whether the chrome is visible (the only center element for live). For
-          live it disappears as soon as the feed starts arriving. */}
-      {showLoader ? (
+          live it disappears as soon as the feed starts arriving. While
+          genuinely offline this becomes a message instead of a spinner: the
+          engine keeps retrying underneath (live retry / reconnect recovery),
+          but an indefinite spinner reads as broken where naming the actual
+          cause doesn't. Reverts to the spinner the moment connectivity
+          returns — recovery itself is handled by the manager, not here. */}
+      {showOffline ? (
+        <View style={styles.centerLoader} pointerEvents="none">
+          <Text style={styles.offlineText}>{offlineMessage}</Text>
+        </View>
+      ) : showLoader ? (
         <View style={styles.centerLoader} pointerEvents="none">
           <ActivityIndicator size="large" color="#fff" />
         </View>
@@ -249,6 +267,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
   liveBadge: {
     position: 'absolute',
