@@ -33,11 +33,12 @@ export interface VideoControlsProps {
    */
   offlineMessage?: string;
   /**
-   * Suppress the center loading/buffering spinner — e.g. while `isBlur` is
-   * active on the player: a spinner over a blurred picture reads as broken
-   * rather than intentional. Default false.
+   * Mirrors the player's `isBlur` prop: while true, hides the loading/
+   * buffering spinner (in every case, not just while offline — a spinner
+   * over a blurred picture reads as broken rather than intentional) and the
+   * mute and fullscreen buttons. Default false.
    */
-  hideLoader?: boolean;
+  isBlur?: boolean;
 }
 
 /**
@@ -53,7 +54,7 @@ export function VideoControls({
   showFullscreenButton = true,
   onClose,
   offlineMessage = 'No Internet Connection',
-  hideLoader = false,
+  isBlur = false,
 }: VideoControlsProps) {
   const manager = useVideoManager();
   const playing = usePlayback((s) => s.playing);
@@ -70,7 +71,7 @@ export function VideoControls({
 
   const feedArriving = playing || buffered > 0 || position > 0;
   const showLoader =
-    !hideLoader &&
+    !isBlur &&
     (live ? (loading || buffering) && !feedArriving : loading || buffering);
   const showOffline = !online && (loading || buffering);
 
@@ -128,7 +129,7 @@ export function VideoControls({
 
   const progress = duration > 0 ? Math.min(position / duration, 1) : 0;
 
-  const muteButton = (
+  const muteButton = isBlur ? null : (
     <Pressable
       style={styles.button}
       onPress={() => (muted ? manager.unmute() : manager.mute())}
@@ -142,7 +143,7 @@ export function VideoControls({
     </Pressable>
   );
 
-  const fullscreenButton = showFullscreenButton ? (
+  const fullscreenButton = showFullscreenButton && !isBlur ? (
     <Pressable
       style={styles.button}
       onPress={() => manager.toggleFullscreen()}

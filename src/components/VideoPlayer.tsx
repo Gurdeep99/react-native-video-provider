@@ -417,7 +417,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
             {thumbnail()}
           </View>
         ) : null}
-        {controls ? <VideoControls hideLoader={isBlur} /> : null}
+        {controls ? <VideoControls isBlur={isBlur} /> : null}
       </View>
     );
   }
