@@ -86,6 +86,18 @@ object PlayerCore {
   private var player: ExoPlayer? = null
   private var playerView: PlayerView? = null
 
+  /**
+   * Surface type for the singleton PlayerView, set via [setUseTextureView]
+   * before [initialize] first inflates it. surface_type is only settable via
+   * layout attrs, hence the two layouts. Changing this after the view exists
+   * has no effect until the app restarts.
+   */
+  private var useTextureView = true
+
+  fun setUseTextureView(value: Boolean) {
+    useTextureView = value
+  }
+
   // Second engine: a re-parentable WebView running the YouTube IFrame API.
   private enum class Engine { EXO, WEB }
   private var engine = Engine.EXO
@@ -171,8 +183,10 @@ object PlayerCore {
     player = exo
 
     // Inflated from XML because surface_type can only be set via attrs.
+    val layoutRes =
+      if (useTextureView) R.layout.video_player_view else R.layout.video_player_view_surface
     val view = LayoutInflater.from(context.applicationContext)
-      .inflate(R.layout.video_player_view, null) as PlayerView
+      .inflate(layoutRes, null) as PlayerView
     view.player = exo
     playerView = view
   }

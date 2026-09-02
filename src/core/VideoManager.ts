@@ -154,6 +154,7 @@ export class VideoManager {
     liveAutoRetry: true,
     resumeOnFocus: true,
     debug: false,
+    useTextureView: true,
   };
   /** Last non-reserved surface, restored after fullscreen/floating exits. */
   private lastInlineSurfaceId: string | null = null;
@@ -271,6 +272,9 @@ export class VideoManager {
       return;
     }
     this.initialized = true;
+    // Must precede nativeInit(): it decides which surface type Android
+    // inflates the singleton PlayerView with, and that only happens once.
+    NativeVideo.setUseTextureView(this.config.useTextureView);
     NativeVideo.nativeInit();
     this.subscribeNative();
     this.setupNetInfo();

@@ -69,6 +69,12 @@ static VideoSourceSpec *VideoParseSource(NativeVideoSource &source)
   });
 }
 
+- (void)setUseTextureView:(BOOL)useTextureView
+{
+  // TextureView vs. SurfaceView is an Android-only concept (AVPlayerLayer
+  // has no equivalent choice) — nothing to do on iOS.
+}
+
 #pragma mark - Source
 
 - (void)setSource:(NativeVideoSource &)source autoplay:(BOOL)autoplay

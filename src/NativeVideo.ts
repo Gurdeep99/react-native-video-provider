@@ -65,6 +65,16 @@ export interface Spec extends TurboModule {
   nativeInit(): void;
 
   /**
+   * Android only (no-op on iOS): back the player view with a TextureView
+   * (default) or a SurfaceView. Must be called before `nativeInit()` creates
+   * the singleton player view — later calls are ignored until the app
+   * restarts. TextureView re-parents cleanly across surfaces (floating
+   * window, feed cells) at a small performance cost; SurfaceView is cheaper
+   * but can't be animated/transformed and misbehaves when re-parented.
+   */
+  setUseTextureView(useTextureView: boolean): void;
+
+  /**
    * Load a source into the engine. If the currently loaded source has the
    * same `id`, this is a no-op (same-video handoff) and playback continues.
    */

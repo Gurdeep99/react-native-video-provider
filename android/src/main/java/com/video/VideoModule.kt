@@ -35,6 +35,10 @@ class VideoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  override fun setUseTextureView(useTextureView: Boolean) {
+    PlayerCore.setUseTextureView(useTextureView)
+  }
+
   override fun releasePlayer() {
     UiThreadUtil.runOnUiThread {
       PlayerCore.release()
