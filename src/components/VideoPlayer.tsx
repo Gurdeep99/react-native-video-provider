@@ -33,6 +33,24 @@ export interface VideoPlayerProps extends ViewProps {
   /** Show built-in controls. Default true. */
   controls?: boolean;
   resizeMode?: ResizeMode;
+  /**
+   * Android only (ignored on iOS). Back the shared player view with a
+   * TextureView (default) or a SurfaceView.
+   *
+   * TextureView is what lets the player re-parent cleanly between surfaces
+   * (inline -> fullscreen -> floating, feed cells) without a black flash, at
+   * a small rendering-performance cost. SurfaceView is cheaper but can't be
+   * animated/transformed and tends to black-flash across a re-parent — only
+   * worth it if the app never moves the player between surfaces.
+   *
+   * There is exactly one player view for the whole app (one native engine,
+   * many surfaces), created lazily the first time any video actually
+   * attaches. So this only takes effect if it's set by the first `<VideoPlayer>`
+   * to attach anywhere in the app — later players setting it, or setting it
+   * after that first attach, are no-ops until the app restarts. Falls back to
+   * `VideoProviderConfig.useTextureView` (default true) if never set here.
+   */
+  useTextureView?: boolean;
   /** Loop playback when it ends. Default false. */
   repeat?: boolean;
   /** Default false. */
@@ -120,6 +138,20 @@ export interface VideoPlayerProps extends ViewProps {
    * (before the first frame) — e.g. `thumbnail={() => <Image … />}`.
    */
   thumbnail?: () => ReactNode;
+  /**
+   * Render always-on content over the video, between the surface and the
+   * built-in controls — e.g. a blur:
+   * `overlay={() => <BlurView style={StyleSheet.absoluteFill} blurType="dark" blurAmount={10} />}`
+   * (`@react-native-community/blur`). Absolutely filled to match the player.
+   *
+   * On Android, a real-time blur needs the video pixels to actually be part
+   * of the view hierarchy it captures — a SurfaceView-backed video renders
+   * on a separate hardware layer that a blur can't see through, showing
+   * black/whatever's behind instead of the video. `useTextureView` (which
+   * this library defaults to `true`) is what makes it work; if you've set it
+   * `false` anywhere, this overlay's blur will come out empty on Android.
+   */
+  overlay?: () => ReactNode;
   /** Fires once metadata (duration, dimensions) is available. */
   onLoadComplete?: (info: VideoEventMap['onLoad']) => void;
   /** Fires whenever buffering starts or stops. */
@@ -148,6 +180,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       surfaceId,
       controls = true,
       resizeMode,
+      useTextureView,
       repeat,
       muted,
       orientation,
@@ -160,6 +193,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       live = false,
       liveIcon,
       thumbnail,
+      overlay,
       onLoadComplete,
       onBuffering,
       onError,
@@ -181,6 +215,16 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     sourceRef.current = source;
 
     useImperativeHandle(ref, () => manager, [manager]);
+
+    // Declared before the setSource effect below so it always runs first for
+    // THIS component — it only matters app-wide, though, if this is also the
+    // first player to ever attach (see the prop's doc).
+    useEffect(() => {
+      if (useTextureView === undefined) {
+        return;
+      }
+      manager.setUseTextureView(useTextureView);
+    }, [manager, useTextureView]);
 
     useEffect(() => {
       // Don't autoplay a player that mounts already unfocused (isFocused
@@ -356,6 +400,7 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     return (
       <View style={[styles.container, style]} {...rest}>
         <VideoSurface surfaceId={id} style={styles.surface} />
+        {overlay ? <View style={styles.surface}>{overlay()}</View> : null}
         {thumbnail && loading ? (
           <View style={styles.surface} pointerEvents="none">
             {thumbnail()}

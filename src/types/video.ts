@@ -169,16 +169,12 @@ export interface VideoProviderConfig {
    */
   debug?: boolean;
   /**
-   * Android only (ignored on iOS). Back the player view with a TextureView
-   * (default) or a SurfaceView.
-   *
-   * TextureView is what makes the player re-parent cleanly between surfaces
-   * (inline -> fullscreen -> floating, feed cells) without a black flash, at
-   * a small rendering-performance cost. SurfaceView is cheaper but can't be
-   * animated or transformed and tends to show a black frame across a
-   * re-parent — only worth it if the app never moves the player between
-   * surfaces. Applied once, at provider init; changing it later has no
-   * effect until the app restarts. Default true.
+   * Android only (ignored on iOS). App-wide default for backing the player
+   * view with a TextureView (default) or a SurfaceView — see
+   * `VideoPlayerProps.useTextureView` for what each means and for setting it
+   * per-player instead. This is just the fallback used if no mounted player
+   * sets its own `useTextureView` before the first video anywhere attaches.
+   * Default true.
    */
   useTextureView?: boolean;
 }

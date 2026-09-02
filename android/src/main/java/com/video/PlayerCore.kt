@@ -173,7 +173,13 @@ object PlayerCore {
 
   // ------------------------------------------------------------- lifecycle
 
-  /** Idempotent. */
+  /**
+   * Idempotent. Creates the ExoPlayer only — the PlayerView is created
+   * lazily by [ensurePlayerView], on the first real attach, so a
+   * `useTextureView` set from a mounting component (see [setUseTextureView])
+   * still has a chance to apply. Creating it here instead, at provider mount,
+   * would always beat any component to the punch.
+   */
   fun initialize(context: Context) {
     appContext = context.applicationContext
     if (player != null) return
@@ -181,14 +187,24 @@ object PlayerCore {
     val exo = ExoPlayer.Builder(context.applicationContext).build()
     exo.addListener(playerListener)
     player = exo
+  }
 
-    // Inflated from XML because surface_type can only be set via attrs.
+  /**
+   * Inflate the singleton PlayerView the first time it's actually needed,
+   * using whatever [useTextureView] is current at that moment. surface_type
+   * is only settable via layout attrs, hence the two layouts. Once inflated,
+   * later [setUseTextureView] calls no longer change anything.
+   */
+  private fun ensurePlayerView(): PlayerView? {
+    playerView?.let { return it }
+    val context = appContext ?: return null
+    val exo = requirePlayer() ?: return null
     val layoutRes =
       if (useTextureView) R.layout.video_player_view else R.layout.video_player_view_surface
-    val view = LayoutInflater.from(context.applicationContext)
-      .inflate(layoutRes, null) as PlayerView
+    val view = LayoutInflater.from(context).inflate(layoutRes, null) as PlayerView
     view.player = exo
     playerView = view
+    return view
   }
 
   fun release() {
@@ -831,7 +847,7 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
   }
 
   /** The view of the currently-active engine (re-parented across surfaces). */
-  private fun activeView(): View? = if (engine == Engine.WEB) webView else playerView
+  private fun activeView(): View? = if (engine == Engine.WEB) webView else ensurePlayerView()
 
   fun detach() {
     val view = activeView() ?: return

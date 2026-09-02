@@ -272,8 +272,10 @@ export class VideoManager {
       return;
     }
     this.initialized = true;
-    // Must precede nativeInit(): it decides which surface type Android
-    // inflates the singleton PlayerView with, and that only happens once.
+    // Sets the app-wide default. Android inflates the singleton PlayerView
+    // lazily on the first real attach, so an individual
+    // `<VideoPlayer useTextureView>` can still override this default as long
+    // as it's set before any video anywhere in the app first attaches.
     NativeVideo.setUseTextureView(this.config.useTextureView);
     NativeVideo.nativeInit();
     this.subscribeNative();
@@ -718,6 +720,20 @@ export class VideoManager {
   setResizeMode(mode: ResizeMode): void {
     this.set({ resizeMode: mode });
     NativeVideo.setResizeMode(mode);
+  }
+
+  /**
+   * Android only (ignored on iOS). Back the shared player view with a
+   * TextureView (default) or a SurfaceView — see `VideoPlayerProps.useTextureView`.
+   *
+   * There is exactly one engine view for the whole app, created lazily on
+   * the first real attach, so only the value in effect at that moment
+   * matters: whichever `<VideoPlayer useTextureView>` mounts and attaches
+   * first (or `VideoProviderConfig.useTextureView` if none set it) wins for
+   * the rest of the app session. Calling this after that has no effect.
+   */
+  setUseTextureView(useTextureView: boolean): void {
+    NativeVideo.setUseTextureView(useTextureView);
   }
 
   /**
