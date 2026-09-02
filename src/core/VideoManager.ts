@@ -723,6 +723,19 @@ export class VideoManager {
   }
 
   /**
+   * Blur the actual video output natively — see `VideoPlayerProps.isBlur`
+   * for the component-level prop and the platform notes on how this is
+   * implemented (no third-party blur package involved).
+   */
+  setBlurred(
+    blurred: boolean,
+    blurAmount = 50,
+    blurType: 'light' | 'dark' | 'xlight' = 'dark'
+  ): void {
+    NativeVideo.setBlurred(blurred, blurAmount, blurType);
+  }
+
+  /**
    * Android only (ignored on iOS). Back the shared player view with a
    * TextureView (default) or a SurfaceView — see `VideoPlayerProps.useTextureView`.
    *

@@ -159,6 +159,13 @@ static VideoSourceSpec *VideoParseSource(NativeVideoSource &source)
   dispatch_async(dispatch_get_main_queue(), ^{ [VideoPlayerCore.shared setResizeMode:mode]; });
 }
 
+- (void)setBlurred:(BOOL)blurred blurAmount:(double)blurAmount blurType:(NSString *)blurType
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [VideoPlayerCore.shared setBlurred:blurred amount:blurAmount type:blurType];
+  });
+}
+
 - (void)getPosition:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   dispatch_async(dispatch_get_main_queue(), ^{

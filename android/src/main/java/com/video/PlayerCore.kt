@@ -3,7 +3,12 @@ package com.video
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -96,6 +101,62 @@ object PlayerCore {
 
   fun setUseTextureView(value: Boolean) {
     useTextureView = value
+  }
+
+  // --- blur (real-time, on the actual video output — see setBlurred) ---
+  private var blurred = false
+  private var blurAmount = 50.0
+  private var blurType = "dark"
+
+  /**
+   * Real-time blur of the actual PlayerView, not an overlay above it — a
+   * `RenderEffect` composited by the GPU directly onto the view that's
+   * rendering the video, so it blurs a live TextureView the way a bitmap-
+   * snapshot blur library can't.
+   *
+   * API 31+ only: `RenderEffect` doesn't exist below Android 12, and there's
+   * no reasonable fallback that would actually blur (vs. just covering) the
+   * video, so this is a silent no-op there — same as it already is for the
+   * WebView (YouTube) engine, which has no PlayerView to blur at all.
+   *
+   * `blurAmount` (0-100) maps to the blur radius; `blurType` tints the blur
+   * (`"dark"` a black tint, `"light"`/`"xlight"` white at decreasing
+   * strength) — matching @react-native-community/blur's naming for
+   * familiarity, though this is this library's own implementation.
+   */
+  fun setBlurred(blurred: Boolean, blurAmount: Double, blurType: String) {
+    this.blurred = blurred
+    this.blurAmount = blurAmount
+    this.blurType = blurType
+    applyBlur()
+  }
+
+  /**
+   * Re-applied whenever the PlayerView is (re)created — [setBlurred] can be
+   * called before the view exists yet (e.g. before the first attach), and
+   * the desired state must survive that.
+   */
+  private fun applyBlur() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val view = playerView ?: return
+    if (!blurred) {
+      view.setRenderEffect(null)
+      return
+    }
+    // Radius 0 renders as a no-op blur but a jarring instant tint pop-in, so
+    // floor it slightly once "blurred" is true at all.
+    val radius = (blurAmount.coerceIn(0.0, 100.0) / 100.0 * 25.0).coerceAtLeast(1.0).toFloat()
+    val blur = RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
+    val tint = when (blurType) {
+      "light" -> Color.argb(120, 255, 255, 255)
+      "xlight" -> Color.argb(60, 255, 255, 255)
+      else -> Color.argb(120, 0, 0, 0) // "dark"
+    }
+    val tinted = RenderEffect.createColorFilterEffect(
+      PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_OVER),
+      blur
+    )
+    view.setRenderEffect(tinted)
   }
 
   // Second engine: a re-parentable WebView running the YouTube IFrame API.
@@ -204,6 +265,7 @@ object PlayerCore {
     val view = LayoutInflater.from(context).inflate(layoutRes, null) as PlayerView
     view.player = exo
     playerView = view
+    applyBlur()
     return view
   }
 

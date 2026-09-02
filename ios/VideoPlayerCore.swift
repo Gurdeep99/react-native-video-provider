@@ -73,6 +73,20 @@ public final class VideoPlayerCore: NSObject {
   private let player = AVPlayer()
   private let hostView = VideoHostView()
 
+  // --- blur (real-time, over the actual video output — see setBlurred) ---
+  // A real UIVisualEffectView layered over the host view. Unlike a bitmap-
+  // snapshot blur, this composites at the system level and reliably blurs
+  // the live AVPlayerLayer content underneath, on every iOS version.
+  private lazy var blurView: UIVisualEffectView = {
+    let view = UIVisualEffectView(effect: nil)
+    view.isUserInteractionEnabled = false
+    view.translatesAutoresizingMaskIntoConstraints = false
+    return view
+  }()
+  /// Retained so the effect it applies via `fractionComplete` (below) isn't
+  /// reverted by deallocation.
+  private var blurAnimator: UIViewPropertyAnimator?
+
   // Second engine: a re-parentable WKWebView running the YouTube IFrame API.
   private enum Engine { case exo, web }
   private var engine: Engine = .exo
@@ -850,6 +864,41 @@ public final class VideoPlayerCore: NSObject {
     default:
       hostView.playerLayer.videoGravity = .resizeAspect
     }
+  }
+
+  /// `amount` is 0-100 intensity, mapped onto the blur via the standard
+  /// `UIViewPropertyAnimator.fractionComplete` trick (a real, partial-way-
+  /// applied blur, not a faked opacity fade). `type` picks the system blur
+  /// style — matching @react-native-community/blur's naming for familiarity,
+  /// though this is this library's own implementation, not that package.
+  @objc public func setBlurred(_ blurred: Bool, amount: Double, type: String) {
+    if blurView.superview !== hostView {
+      hostView.addSubview(blurView)
+      NSLayoutConstraint.activate([
+        blurView.leadingAnchor.constraint(equalTo: hostView.leadingAnchor),
+        blurView.trailingAnchor.constraint(equalTo: hostView.trailingAnchor),
+        blurView.topAnchor.constraint(equalTo: hostView.topAnchor),
+        blurView.bottomAnchor.constraint(equalTo: hostView.bottomAnchor),
+      ])
+    }
+    blurAnimator?.stopAnimation(true)
+    blurAnimator = nil
+    guard blurred else {
+      blurView.effect = nil
+      return
+    }
+    let style: UIBlurEffect.Style
+    switch type {
+    case "light": style = .light
+    case "xlight": style = .extraLight
+    default: style = .dark
+    }
+    let effect = UIBlurEffect(style: style)
+    let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak blurView] in
+      blurView?.effect = effect
+    }
+    animator.fractionComplete = CGFloat(max(0, min(100, amount)) / 100)
+    blurAnimator = animator
   }
 
   @objc public func positionSeconds() -> Double {

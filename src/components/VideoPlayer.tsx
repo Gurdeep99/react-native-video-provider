@@ -139,19 +139,23 @@ export interface VideoPlayerProps extends ViewProps {
    */
   thumbnail?: () => ReactNode;
   /**
-   * Render always-on content over the video, between the surface and the
-   * built-in controls — e.g. a blur:
-   * `overlay={() => <BlurView style={StyleSheet.absoluteFill} blurType="dark" blurAmount={10} />}`
-   * (`@react-native-community/blur`). Absolutely filled to match the player.
+   * Blur the actual video, toggled on demand — e.g. a tap-to-reveal age gate,
+   * or blur-while-paused. Default false.
    *
-   * On Android, a real-time blur needs the video pixels to actually be part
-   * of the view hierarchy it captures — a SurfaceView-backed video renders
-   * on a separate hardware layer that a blur can't see through, showing
-   * black/whatever's behind instead of the video. `useTextureView` (which
-   * this library defaults to `true`) is what makes it work; if you've set it
-   * `false` anywhere, this overlay's blur will come out empty on Android.
+   * Implemented natively by this library (no `@react-native-community/blur`
+   * or any other third-party dependency): a real-time effect composited
+   * directly onto the video output, not an overlay drawn above it — so it
+   * blurs the actual picture, not just whatever's on top of it.
+   *
+   * Android needs `useTextureView` (which this library defaults to `true`)
+   * AND API 31+ (Android 12) — below that, `isBlur` is a silent no-op and
+   * the video stays unblurred. iOS supports every version.
    */
-  overlay?: () => ReactNode;
+  isBlur?: boolean;
+  /** Blur tint. Default `'dark'` (black). */
+  blurType?: 'light' | 'dark' | 'xlight';
+  /** Blur intensity, 0-100. Default `50`. */
+  blurAmount?: number;
   /** Fires once metadata (duration, dimensions) is available. */
   onLoadComplete?: (info: VideoEventMap['onLoad']) => void;
   /** Fires whenever buffering starts or stops. */
@@ -193,7 +197,9 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       live = false,
       liveIcon,
       thumbnail,
-      overlay,
+      isBlur = false,
+      blurType = 'dark',
+      blurAmount = 50,
       onLoadComplete,
       onBuffering,
       onError,
@@ -389,6 +395,10 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       }
     }, [manager, id, isFocused]);
 
+    useEffect(() => {
+      manager.setBlurred(isBlur, blurAmount, blurType);
+    }, [manager, isBlur, blurAmount, blurType]);
+
     useVideoEvents({
       onLoad: onLoadComplete,
       onBuffer: (e) => onBuffering?.(e.buffering),
@@ -396,17 +406,18 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     });
 
     // Both url and youtube render into the same native surface — the native
-    // core hosts either the player view or a re-parentable WebView.
+    // core hosts either the player view or a re-parentable WebView. `isBlur`
+    // isn't rendered here at all: it's applied natively, directly onto the
+    // video output (see VideoManager.setBlurred).
     return (
       <View style={[styles.container, style]} {...rest}>
         <VideoSurface surfaceId={id} style={styles.surface} />
-        {overlay ? <View style={styles.surface}>{overlay()}</View> : null}
         {thumbnail && loading ? (
           <View style={styles.surface} pointerEvents="none">
             {thumbnail()}
           </View>
         ) : null}
-        {controls ? <VideoControls /> : null}
+        {controls ? <VideoControls hideLoader={isBlur} /> : null}
       </View>
     );
   }

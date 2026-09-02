@@ -32,6 +32,12 @@ export interface VideoControlsProps {
    * where naming the actual cause doesn't.
    */
   offlineMessage?: string;
+  /**
+   * Suppress the center loading/buffering spinner — e.g. while `isBlur` is
+   * active on the player: a spinner over a blurred picture reads as broken
+   * rather than intentional. Default false.
+   */
+  hideLoader?: boolean;
 }
 
 /**
@@ -47,6 +53,7 @@ export function VideoControls({
   showFullscreenButton = true,
   onClose,
   offlineMessage = 'No Internet Connection',
+  hideLoader = false,
 }: VideoControlsProps) {
   const manager = useVideoManager();
   const playing = usePlayback((s) => s.playing);
@@ -62,9 +69,9 @@ export function VideoControls({
   const online = usePlayback((s) => s.online);
 
   const feedArriving = playing || buffered > 0 || position > 0;
-  const showLoader = live
-    ? (loading || buffering) && !feedArriving
-    : loading || buffering;
+  const showLoader =
+    !hideLoader &&
+    (live ? (loading || buffering) && !feedArriving : loading || buffering);
   const showOffline = !online && (loading || buffering);
 
   const [visible, setVisible] = useState(true);

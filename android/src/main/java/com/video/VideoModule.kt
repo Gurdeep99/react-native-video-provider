@@ -136,6 +136,10 @@ class VideoModule(reactContext: ReactApplicationContext) :
     UiThreadUtil.runOnUiThread { PlayerCore.setResizeMode(mode) }
   }
 
+  override fun setBlurred(blurred: Boolean, blurAmount: Double, blurType: String) {
+    UiThreadUtil.runOnUiThread { PlayerCore.setBlurred(blurred, blurAmount, blurType) }
+  }
+
   override fun getPosition(promise: Promise) {
     UiThreadUtil.runOnUiThread { promise.resolve(PlayerCore.positionSeconds()) }
   }

@@ -127,6 +127,21 @@ export interface Spec extends TurboModule {
   /** contain | cover | stretch */
   setResizeMode(mode: string): void;
 
+  /**
+   * Blur the actual video output — a real-time effect composited directly
+   * onto the video, not an overlay drawn above it — implemented natively by
+   * this library rather than depending on a third-party blur package.
+   *
+   * `blurAmount` is 0-100 intensity; `blurType` is `"dark"` | `"light"` |
+   * `"xlight"` (naming matches @react-native-community/blur for familiarity).
+   *
+   * Android: a `RenderEffect` composited onto the PlayerView — API 31+ only
+   * (silent no-op below that, and for the YouTube/WebView engine, which has
+   * no video output view to blur). iOS: a `UIVisualEffectView` layered over
+   * the video output, supported on every version.
+   */
+  setBlurred(blurred: boolean, blurAmount: number, blurType: string): void;
+
   /** Re-parent the player view into the surface registered under this id. */
   attach(surfaceId: string): void;
   detach(): void;
