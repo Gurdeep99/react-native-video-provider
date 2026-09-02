@@ -6,6 +6,7 @@ jest.mock('../NativeVideo', () => ({
   __esModule: true,
   default: {
     nativeInit: jest.fn(),
+    setUseTextureView: jest.fn(),
     setSource: jest.fn(),
     preload: jest.fn(),
     reload: jest.fn(),
