@@ -147,9 +147,15 @@ export interface VideoPlayerProps extends ViewProps {
    * directly onto the video output, not an overlay drawn above it — so it
    * blurs the actual picture, not just whatever's on top of it.
    *
-   * Android needs `useTextureView` (which this library defaults to `true`)
-   * AND API 31+ (Android 12) — below that, `isBlur` is a silent no-op and
-   * the video stays unblurred. iOS supports every version.
+   * Works for both a native `url` source and YouTube alike, and keeps
+   * following the video across an engine switch, fullscreen, or floating.
+   *
+   * Android needs API 31+ (Android 12) — below that, `isBlur` is a silent
+   * no-op and the video stays unblurred. A native (non-YouTube) source also
+   * needs `useTextureView` (which this library defaults to `true`) — a
+   * SurfaceView renders on a separate hardware layer the blur can't reach,
+   * so with `useTextureView: false` the video shows through unblurred. iOS
+   * supports every version, for both engines.
    */
   isBlur?: boolean;
   /** Blur tint. Default `'dark'` (black). */

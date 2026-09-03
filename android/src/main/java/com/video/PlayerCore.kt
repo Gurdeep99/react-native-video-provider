@@ -19,6 +19,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.annotation.RequiresApi
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -109,15 +110,15 @@ object PlayerCore {
   private var blurType = "dark"
 
   /**
-   * Real-time blur of the actual PlayerView, not an overlay above it — a
-   * `RenderEffect` composited by the GPU directly onto the view that's
-   * rendering the video, so it blurs a live TextureView the way a bitmap-
-   * snapshot blur library can't.
+   * Real-time blur of the actual video output, not an overlay above it — a
+   * `RenderEffect` composited by the GPU directly onto whichever engine's
+   * view is currently active (the PlayerView, or the YouTube engine's plain
+   * WebView — both are ordinary Views a RenderEffect blurs the same way), so
+   * it blurs a live TextureView the way a bitmap-snapshot blur library can't.
    *
    * API 31+ only: `RenderEffect` doesn't exist below Android 12, and there's
    * no reasonable fallback that would actually blur (vs. just covering) the
-   * video, so this is a silent no-op there — same as it already is for the
-   * WebView (YouTube) engine, which has no PlayerView to blur at all.
+   * video, so this is a silent no-op there.
    *
    * `blurAmount` (0-100) maps to the blur radius; `blurType` tints the blur
    * (`"dark"` a black tint, `"light"`/`"xlight"` white at decreasing
@@ -132,17 +133,29 @@ object PlayerCore {
   }
 
   /**
-   * Re-applied whenever the PlayerView is (re)created — [setBlurred] can be
-   * called before the view exists yet (e.g. before the first attach), and
-   * the desired state must survive that.
+   * Re-applied whenever the PlayerView/WebView is (re)created, and whenever
+   * the active engine changes (a `RenderEffect` lives on one specific View
+   * instance, so switching from url <-> youtube must move it) — see the
+   * calls to this from [ensurePlayerView], [ensureWebView] and [attachTo].
+   * [setBlurred] can also be called before either view exists yet (e.g.
+   * before the first attach), and the desired state must survive that.
    */
   private fun applyBlur() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    val view = playerView ?: return
-    if (!blurred) {
-      view.setRenderEffect(null)
-      return
+    val effect = if (blurred) buildBlurEffect() else null
+    // Always clear the inactive engine's view too, or a stale blur would
+    // reappear with no explicit setBlurred call if the engine switches back.
+    if (engine == Engine.WEB) {
+      webView?.setRenderEffect(effect)
+      playerView?.setRenderEffect(null)
+    } else {
+      playerView?.setRenderEffect(effect)
+      webView?.setRenderEffect(null)
     }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun buildBlurEffect(): RenderEffect {
     // Radius 0 renders as a no-op blur but a jarring instant tint pop-in, so
     // floor it slightly once "blurred" is true at all.
     val radius = (blurAmount.coerceIn(0.0, 100.0) / 100.0 * 25.0).coerceAtLeast(1.0).toFloat()
@@ -152,11 +165,10 @@ object PlayerCore {
       "xlight" -> Color.argb(60, 255, 255, 255)
       else -> Color.argb(120, 0, 0, 0) // "dark"
     }
-    val tinted = RenderEffect.createColorFilterEffect(
+    return RenderEffect.createColorFilterEffect(
       PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_OVER),
       blur
     )
-    view.setRenderEffect(tinted)
   }
 
   // Second engine: a re-parentable WebView running the YouTube IFrame API.
@@ -425,6 +437,7 @@ object PlayerCore {
       }
     }
     webView = wv
+    applyBlur()
     return wv
   }
 
@@ -961,6 +974,9 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     if (engine == Engine.EXO) {
       playerView?.let { rebindPlayerToView(it, surfaceId, container) }
     }
+    // Keeps the blur (if any) on whichever engine's view is now active —
+    // `view` above may be a different engine's view than last time.
+    applyBlur()
     listener?.onAttach(surfaceId)
   }
 

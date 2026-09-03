@@ -74,9 +74,11 @@ public final class VideoPlayerCore: NSObject {
   private let hostView = VideoHostView()
 
   // --- blur (real-time, over the actual video output — see setBlurred) ---
-  // A real UIVisualEffectView layered over the host view. Unlike a bitmap-
-  // snapshot blur, this composites at the system level and reliably blurs
-  // the live AVPlayerLayer content underneath, on every iOS version.
+  // A real UIVisualEffectView, moved onto whichever engine view is active
+  // (see attachBlurViewIfNeeded). Unlike a bitmap-snapshot blur, this
+  // composites at the system level and reliably blurs the live content
+  // underneath — the native player's AVPlayerLayer, or the YouTube engine's
+  // WKWebView — on every iOS version.
   private lazy var blurView: UIVisualEffectView = {
     let view = UIVisualEffectView(effect: nil)
     view.isUserInteractionEnabled = false
@@ -86,6 +88,9 @@ public final class VideoPlayerCore: NSObject {
   /// Retained so the effect it applies via `fractionComplete` (below) isn't
   /// reverted by deallocation.
   private var blurAnimator: UIViewPropertyAnimator?
+  /// Guards `attachBlurViewIfNeeded` so it stays a no-op (no lazy `blurView`
+  /// creation, no extra subview) until `setBlurred` has actually been used.
+  private var blurEverUsed = false
 
   // Second engine: a re-parentable WKWebView running the YouTube IFrame API.
   private enum Engine { case exo, web }
@@ -866,21 +871,35 @@ public final class VideoPlayerCore: NSObject {
     }
   }
 
+  /// Moves the blur subview onto whichever engine view is currently active
+  /// (the native player's `hostView`, or the YouTube engine's `WKWebView`) —
+  /// both are plain `UIView`s, so a `UIVisualEffectView` blurs either one
+  /// the same way. Called from `setBlurred` and, so the blur keeps following
+  /// the video across an engine switch (`url` \<-\> `youtube`) or a re-parent
+  /// even without a fresh `setBlurred` call, from `attachTo` too.
+  private func attachBlurViewIfNeeded() {
+    guard blurEverUsed else { return }
+    let parent = activeView
+    guard blurView.superview !== parent else { return }
+    blurView.removeFromSuperview()
+    parent.addSubview(blurView)
+    NSLayoutConstraint.activate([
+      blurView.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
+      blurView.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+      blurView.topAnchor.constraint(equalTo: parent.topAnchor),
+      blurView.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
+    ])
+  }
+
   /// `amount` is 0-100 intensity, mapped onto the blur via the standard
   /// `UIViewPropertyAnimator.fractionComplete` trick (a real, partial-way-
   /// applied blur, not a faked opacity fade). `type` picks the system blur
   /// style — matching @react-native-community/blur's naming for familiarity,
   /// though this is this library's own implementation, not that package.
+  /// Works for both engines — see `attachBlurViewIfNeeded`.
   @objc public func setBlurred(_ blurred: Bool, amount: Double, type: String) {
-    if blurView.superview !== hostView {
-      hostView.addSubview(blurView)
-      NSLayoutConstraint.activate([
-        blurView.leadingAnchor.constraint(equalTo: hostView.leadingAnchor),
-        blurView.trailingAnchor.constraint(equalTo: hostView.trailingAnchor),
-        blurView.topAnchor.constraint(equalTo: hostView.topAnchor),
-        blurView.bottomAnchor.constraint(equalTo: hostView.bottomAnchor),
-      ])
-    }
+    blurEverUsed = true
+    attachBlurViewIfNeeded()
     blurAnimator?.stopAnimation(true)
     blurAnimator = nil
     guard blurred else {
@@ -965,6 +984,9 @@ public final class VideoPlayerCore: NSObject {
     view.frame = container.bounds
     view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     container.addSubview(view)
+    // Keeps the blur (if any) following the video across an engine switch —
+    // `view` above may now be a different engine's view than last time.
+    attachBlurViewIfNeeded()
     currentSurfaceId = surfaceId
     pendingSurfaceId = nil
     delegate?.onAttach(surfaceId)

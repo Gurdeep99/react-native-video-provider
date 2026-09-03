@@ -135,10 +135,12 @@ export interface Spec extends TurboModule {
    * `blurAmount` is 0-100 intensity; `blurType` is `"dark"` | `"light"` |
    * `"xlight"` (naming matches @react-native-community/blur for familiarity).
    *
-   * Android: a `RenderEffect` composited onto the PlayerView — API 31+ only
-   * (silent no-op below that, and for the YouTube/WebView engine, which has
-   * no video output view to blur). iOS: a `UIVisualEffectView` layered over
-   * the video output, supported on every version.
+   * Works for both engines — the native player AND YouTube (WebView) — and
+   * keeps following the video across an engine switch or a surface re-parent.
+   *
+   * Android: a `RenderEffect` composited onto whichever engine's view is
+   * currently active — API 31+ only (silent no-op below that). iOS: a
+   * `UIVisualEffectView` layered the same way, supported on every version.
    */
   setBlurred(blurred: boolean, blurAmount: number, blurType: string): void;
 
