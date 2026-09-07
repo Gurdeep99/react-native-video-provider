@@ -7,12 +7,12 @@ import {
 } from '../state/createVideoStore';
 import type { VideoEventMap, VideoEventName } from '../types/events';
 import type {
-  LiveIconRenderer,
   OrientationLock,
   PlaybackStatus,
   PlayerMode,
   ResizeMode,
   SetSourceOptions,
+  TopIconRenderer,
   VideoError,
   VideoProviderConfig,
   VideoSource,
@@ -189,15 +189,18 @@ export class VideoManager {
    */
   private explicitLive = new Map<string, boolean>();
   /**
-   * Live badge renderers of all currently mounted players, oldest first.
+   * Top-left live badge renderers of all currently mounted players, oldest
+   * first.
    *
-   * `state.liveIcon` is a single slot but any number of players can be mounted
-   * at once (carousels, feeds). Keeping the registrations in a stack means the
-   * newest one shows and, when it unmounts, a surviving sibling's badge is
-   * restored instead of the slot being left empty — which is what happened when
-   * every player cleared the slot unconditionally on unmount.
+   * `state.leftTopIcon` is a single slot but any number of players can be
+   * mounted at once (carousels, feeds). Keeping the registrations in a stack
+   * means the newest one shows and, when it unmounts, a surviving sibling's
+   * badge is restored instead of the slot being left empty — which is what
+   * happened when every player cleared the slot unconditionally on unmount.
    */
-  private liveIconStack: LiveIconRenderer[] = [];
+  private leftTopIconStack: TopIconRenderer[] = [];
+  /** Same as `leftTopIconStack`, for `state.rightTopIcon`. */
+  private rightTopIconStack: TopIconRenderer[] = [];
 
   // --- focus resume ---
   /** The current source was set with autoplay, so focus may resume it. */
@@ -585,8 +588,9 @@ export class VideoManager {
         // player's `setLive()` only runs when it mounts, so an already-mounted
         // player getting its video handed back had no way to re-pin it.
         //
-        // `liveIcon` deliberately survives: it's a registration owned by the
-        // mounted players (see liveIconStack), not per-video state.
+        // `leftTopIcon`/`rightTopIcon` deliberately survive: they're
+        // registrations owned by the mounted players (see leftTopIconStack /
+        // rightTopIconStack), not per-video state.
         live: this.explicitLive.get(source.id) ?? false,
       });
       // Both engines (native player / native WebView) live behind the same
@@ -750,14 +754,15 @@ export class VideoManager {
   }
 
   /**
-   * Mark the active video live (hides the seek bar) and register the badge
-   * renderer, so both inline and the built-in fullscreen host show them.
+   * Mark the active video live (hides the seek bar) and register the
+   * top-left badge renderer, so both inline and the built-in fullscreen
+   * host show them.
    *
    * Optional: the engine auto-detects live streams (HLS live window,
    * indefinite duration, YouTube `isLive`) and sets this itself. Calling it
    * pins the value — native detection stops overriding it for this source.
    */
-  setLive(live: boolean, liveIcon?: LiveIconRenderer | null): void {
+  setLive(live: boolean, leftTopIcon?: TopIconRenderer | null): void {
     // Pin against the source this was declared for, so it survives the engine
     // handing this video back later and doesn't leak onto an unrelated video.
     const id = this.store.getState().currentVideo?.id;
@@ -768,9 +773,9 @@ export class VideoManager {
     // Only touch the badge when a renderer was actually passed. Clearing it on
     // every `setLive(false)` is what made the badge vanish after a remount:
     // the registration is presentational and outlives any one live/not-live
-    // transition. Use setLiveIcon() to manage it.
-    if (liveIcon !== undefined) {
-      this.set({ liveIcon });
+    // transition. Use setLeftTopIcon() to manage it.
+    if (leftTopIcon !== undefined) {
+      this.set({ leftTopIcon });
     }
     if (!live) {
       this.clearLiveRetry();
@@ -778,7 +783,7 @@ export class VideoManager {
   }
 
   /**
-   * Register the live badge renderer, independent of live-ness.
+   * Register the top-left badge renderer, independent of live-ness.
    *
    * Kept separate from `setLive` on purpose: the renderer is usually an inline
    * arrow function, so its identity changes every render. Tying live state to
@@ -786,40 +791,73 @@ export class VideoManager {
    * loss, say) could momentarily flip `live` false — revealing the seek bar on
    * a live stream. Pass null to unregister.
    */
-  setLiveIcon(liveIcon: LiveIconRenderer | null): void {
-    this.set({ liveIcon });
+  setLeftTopIcon(leftTopIcon: TopIconRenderer | null): void {
+    this.set({ leftTopIcon });
   }
 
   /**
-   * Register a mounted player's live badge renderer. The newest registration is
-   * the one shown.
+   * Register a mounted player's top-left badge renderer. The newest
+   * registration is the one shown.
    *
-   * Prefer this over `setLiveIcon` from a component: several players can be
-   * mounted at once and they all share the single `liveIcon` slot, so ownership
-   * has to be tracked. Always pair with `unregisterLiveIcon(renderer)` — pass
-   * the SAME function reference back.
+   * Prefer this over `setLeftTopIcon` from a component: several players can
+   * be mounted at once and they all share the single `leftTopIcon` slot, so
+   * ownership has to be tracked. Always pair with
+   * `unregisterLeftTopIcon(renderer)` — pass the SAME function reference back.
    */
-  registerLiveIcon(renderer: LiveIconRenderer): void {
-    this.liveIconStack.push(renderer);
-    this.set({ liveIcon: renderer });
+  registerLeftTopIcon(renderer: TopIconRenderer): void {
+    this.leftTopIconStack.push(renderer);
+    this.set({ leftTopIcon: renderer });
   }
 
   /**
-   * Drop a registration made by `registerLiveIcon` and show whichever earlier
-   * one is still mounted (null if none are).
+   * Drop a registration made by `registerLeftTopIcon` and show whichever
+   * earlier one is still mounted (null if none are).
    *
    * Order-independent by design: an unmounting player must not blank a sibling's
    * badge, and a player that unmounts *after* its replacement has already
    * registered must not undo the replacement.
    */
-  unregisterLiveIcon(renderer: LiveIconRenderer): void {
-    const i = this.liveIconStack.lastIndexOf(renderer);
+  unregisterLeftTopIcon(renderer: TopIconRenderer): void {
+    const i = this.leftTopIconStack.lastIndexOf(renderer);
     if (i === -1) {
       return;
     }
-    this.liveIconStack.splice(i, 1);
-    const next = this.liveIconStack[this.liveIconStack.length - 1] ?? null;
-    this.set({ liveIcon: next });
+    this.leftTopIconStack.splice(i, 1);
+    const next = this.leftTopIconStack[this.leftTopIconStack.length - 1] ?? null;
+    this.set({ leftTopIcon: next });
+  }
+
+  /**
+   * Register the top-right badge renderer, independent of live-ness. Same
+   * shape and reasoning as `setLeftTopIcon`, mirrored for the opposite corner.
+   */
+  setRightTopIcon(rightTopIcon: TopIconRenderer | null): void {
+    this.set({ rightTopIcon });
+  }
+
+  /**
+   * Register a mounted player's top-right badge renderer. Same shape and
+   * reasoning as `registerLeftTopIcon` — pair with
+   * `unregisterRightTopIcon(renderer)` — the SAME function reference back.
+   */
+  registerRightTopIcon(renderer: TopIconRenderer): void {
+    this.rightTopIconStack.push(renderer);
+    this.set({ rightTopIcon: renderer });
+  }
+
+  /**
+   * Drop a registration made by `registerRightTopIcon` and show whichever
+   * earlier one is still mounted (null if none are). Same reasoning as
+   * `unregisterLeftTopIcon`.
+   */
+  unregisterRightTopIcon(renderer: TopIconRenderer): void {
+    const i = this.rightTopIconStack.lastIndexOf(renderer);
+    if (i === -1) {
+      return;
+    }
+    this.rightTopIconStack.splice(i, 1);
+    const next = this.rightTopIconStack[this.rightTopIconStack.length - 1] ?? null;
+    this.set({ rightTopIcon: next });
   }
 
   /**
@@ -1252,7 +1290,8 @@ export class VideoManager {
     this.lastInlineSurfaceId = null;
     this.fullscreenOrientationDefault = null;
     this.explicitLive.clear();
-    this.liveIconStack = [];
+    this.leftTopIconStack = [];
+    this.rightTopIconStack = [];
     NativeVideo.setOrientation('auto');
     NativeVideo.releasePlayer();
     this.store.setState({ ...initialVideoState }, true);

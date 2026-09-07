@@ -254,10 +254,10 @@ optional controls in one component. Handy props:
 ```
 
 Pass `live` for a live stream: the controls hide the seek bar/times and the
-center play/pause (only a loader shows), and a persistent `liveIcon` badge
-sits top-left. A live feed that errors or drops **auto-retries with backoff**,
-pausing while offline and resuming on reconnect (install
-`@react-native-community/netinfo` for connectivity; opt out with
+center play/pause (only a loader shows), and persistent `leftTopIcon` /
+`rightTopIcon` badges sit in the top corners. A live feed that errors or drops
+**auto-retries with backoff**, pausing while offline and resuming on reconnect
+(install `@react-native-community/netinfo` for connectivity; opt out with
 `<VideoProvider config={{ liveAutoRetry: false }}>`). `thumbnail` shows a
 poster over the video during the initial load:
 
@@ -265,7 +265,8 @@ poster over the video during the initial load:
 <VideoPlayer
   source={liveSource}
   live
-  liveIcon={() => <LottieView source={liveAnim} autoPlay loop style={{ width: 44, height: 20 }} />}
+  leftTopIcon={() => <LottieView source={liveAnim} autoPlay loop style={{ width: 44, height: 20 }} />}
+  rightTopIcon={() => <ViewerCountBadge />}
   thumbnail={() => <Image source={{ uri: poster }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
 />
 ```

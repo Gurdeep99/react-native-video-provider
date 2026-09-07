@@ -125,14 +125,20 @@ export interface VideoPlayerProps extends ViewProps {
   isFocused?: boolean;
   /**
    * Mark this as a live stream: the built-in controls hide the seek bar/times
-   * and show `liveIcon` (if given). Default false.
+   * and show `leftTopIcon`/`rightTopIcon` (if given). Default false.
    */
   live?: boolean;
   /**
-   * Render a live indicator shown in the controls while `live` — e.g. a
-   * Lottie animation or a "LIVE" badge: `liveIcon={() => <LottieView … />}`.
+   * Render a live indicator shown top-left in the controls while `live` —
+   * e.g. a Lottie animation or a "LIVE" badge:
+   * `leftTopIcon={() => <LottieView … />}`.
    */
-  liveIcon?: () => ReactNode;
+  leftTopIcon?: () => ReactNode;
+  /**
+   * Same as `leftTopIcon`, shown top-right instead — e.g. a viewer-count
+   * badge alongside a "LIVE" badge on the left.
+   */
+  rightTopIcon?: () => ReactNode;
   /**
    * Render a poster shown over the video only during the initial load
    * (before the first frame) — e.g. `thumbnail={() => <Image … />}`.
@@ -201,7 +207,8 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
       pauseOnFocusLost = true,
       isFocused,
       live = false,
-      liveIcon,
+      leftTopIcon,
+      rightTopIcon,
       thumbnail,
       isBlur = false,
       blurType = 'dark',
@@ -274,29 +281,45 @@ export const VideoPlayer = forwardRef<VideoManager, VideoPlayerProps>(
     }, [manager, muted]);
 
     // Keep the newest renderer reachable without making it an effect dep:
-    // `liveIcon` is typically an inline arrow, so its identity changes every
-    // render.
-    const liveIconRef = useRef(liveIcon);
+    // `leftTopIcon` is typically an inline arrow, so its identity changes
+    // every render.
+    const leftTopIconRef = useRef(leftTopIcon);
     useEffect(() => {
-      liveIconRef.current = liveIcon;
+      leftTopIconRef.current = leftTopIcon;
     });
 
-    const hasLiveIcon = liveIcon != null;
+    const hasLeftTopIcon = leftTopIcon != null;
     useEffect(() => {
       // Publish the badge to the store so the built-in fullscreen host (which
       // renders its own controls) shows it too. Registering a stable wrapper
       // keyed on *presence* rather than the prop itself means an ordinary
       // re-render can't churn the registration.
-      if (!hasLiveIcon) {
+      if (!hasLeftTopIcon) {
         return;
       }
-      const renderer = () => liveIconRef.current?.() ?? null;
-      // register/unregister rather than setLiveIcon(null): the slot is shared by
-      // every mounted player, so ownership has to be tracked or an unmounting
-      // player blanks a sibling's badge with nothing to restore it.
-      manager.registerLiveIcon(renderer);
-      return () => manager.unregisterLiveIcon(renderer);
-    }, [manager, hasLiveIcon]);
+      const renderer = () => leftTopIconRef.current?.() ?? null;
+      // register/unregister rather than setLeftTopIcon(null): the slot is
+      // shared by every mounted player, so ownership has to be tracked or an
+      // unmounting player blanks a sibling's badge with nothing to restore it.
+      manager.registerLeftTopIcon(renderer);
+      return () => manager.unregisterLeftTopIcon(renderer);
+    }, [manager, hasLeftTopIcon]);
+
+    // Same as leftTopIcon just above, mirrored for the opposite corner.
+    const rightTopIconRef = useRef(rightTopIcon);
+    useEffect(() => {
+      rightTopIconRef.current = rightTopIcon;
+    });
+
+    const hasRightTopIcon = rightTopIcon != null;
+    useEffect(() => {
+      if (!hasRightTopIcon) {
+        return;
+      }
+      const renderer = () => rightTopIconRef.current?.() ?? null;
+      manager.registerRightTopIcon(renderer);
+      return () => manager.unregisterRightTopIcon(renderer);
+    }, [manager, hasRightTopIcon]);
 
     useEffect(() => {
       // Only pin live-ness when the prop was actually supplied. Calling

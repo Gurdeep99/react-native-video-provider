@@ -685,25 +685,25 @@ describe('VideoManager', () => {
   describe('live badge + reload', () => {
     it('keeps the badge registered across live/not-live transitions', () => {
       const icon = () => null;
-      manager.setLiveIcon(icon);
+      manager.setLeftTopIcon(icon);
       manager.setLive(true);
-      expect(manager.store.getState().liveIcon).toBe(icon);
+      expect(manager.store.getState().leftTopIcon).toBe(icon);
 
       // A bare setLive(false) must not unregister the badge — that is what
       // made it disappear after an unmount/remount.
       manager.setLive(false);
-      expect(manager.store.getState().liveIcon).toBe(icon);
+      expect(manager.store.getState().leftTopIcon).toBe(icon);
 
       manager.setLive(true);
-      expect(manager.store.getState().liveIcon).toBe(icon);
+      expect(manager.store.getState().leftTopIcon).toBe(icon);
     });
 
     it('keeps the badge registered across a source change', () => {
       const icon = () => null;
-      manager.setLiveIcon(icon);
+      manager.setLeftTopIcon(icon);
       manager.setSource(video('a'));
       manager.setSource(video('b'));
-      expect(manager.store.getState().liveIcon).toBe(icon);
+      expect(manager.store.getState().leftTopIcon).toBe(icon);
     });
 
     it('reload rebuilds natively instead of re-issuing setSource', () => {
@@ -795,34 +795,50 @@ describe('VideoManager', () => {
     it('restores a surviving registration when another unmounts', () => {
       const a = () => null;
       const b = () => null;
-      manager.registerLiveIcon(a);
-      manager.registerLiveIcon(b);
-      expect(manager.store.getState().liveIcon).toBe(b);
+      manager.registerLeftTopIcon(a);
+      manager.registerLeftTopIcon(b);
+      expect(manager.store.getState().leftTopIcon).toBe(b);
 
       // b unmounting must not blank the badge while a is still mounted.
-      manager.unregisterLiveIcon(b);
-      expect(manager.store.getState().liveIcon).toBe(a);
+      manager.unregisterLeftTopIcon(b);
+      expect(manager.store.getState().leftTopIcon).toBe(a);
 
-      manager.unregisterLiveIcon(a);
-      expect(manager.store.getState().liveIcon).toBeNull();
+      manager.unregisterLeftTopIcon(a);
+      expect(manager.store.getState().leftTopIcon).toBeNull();
     });
 
     it('a late unmount does not clobber the incoming registration', () => {
       const outgoing = () => null;
       const incoming = () => null;
-      manager.registerLiveIcon(outgoing);
+      manager.registerLeftTopIcon(outgoing);
       // Virtualised list remount: the replacement registers before the old one
       // tears down. Clearing unconditionally left the slot empty for good.
-      manager.registerLiveIcon(incoming);
-      manager.unregisterLiveIcon(outgoing);
-      expect(manager.store.getState().liveIcon).toBe(incoming);
+      manager.registerLeftTopIcon(incoming);
+      manager.unregisterLeftTopIcon(outgoing);
+      expect(manager.store.getState().leftTopIcon).toBe(incoming);
     });
 
     it('ignores an unregister for a renderer that never registered', () => {
       const a = () => null;
-      manager.registerLiveIcon(a);
-      manager.unregisterLiveIcon(() => null);
-      expect(manager.store.getState().liveIcon).toBe(a);
+      manager.registerLeftTopIcon(a);
+      manager.unregisterLeftTopIcon(() => null);
+      expect(manager.store.getState().leftTopIcon).toBe(a);
+    });
+
+    it('mirrors ownership rules for the right-top badge independently', () => {
+      const a = () => null;
+      const b = () => null;
+      manager.registerRightTopIcon(a);
+      manager.registerRightTopIcon(b);
+      expect(manager.store.getState().rightTopIcon).toBe(b);
+
+      manager.unregisterRightTopIcon(b);
+      expect(manager.store.getState().rightTopIcon).toBe(a);
+
+      manager.unregisterRightTopIcon(a);
+      expect(manager.store.getState().rightTopIcon).toBeNull();
+      // The left slot is untouched by any of the above.
+      expect(manager.store.getState().leftTopIcon).toBeNull();
     });
   });
 
@@ -966,7 +982,7 @@ describe('VideoManager', () => {
 
       manager.setSource(video('vodB'));
       expect(manager.store.getState().live).toBe(false);
-      expect(manager.store.getState().liveIcon).toBeNull();
+      expect(manager.store.getState().leftTopIcon).toBeNull();
     });
 
     it('accepts progress again once the new video has loaded', () => {

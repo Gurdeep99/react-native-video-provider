@@ -25,7 +25,7 @@ A dumb mount point. Registers its native view under `surfaceId`; the engine
 renders into at most one surface at a time. `autoAttach` attaches the player
 on mount. Unmounting never destroys the player.
 
-### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? autoFullscreenOnRotate? pauseOnFocusLost? isFocused? live? liveIcon? thumbnail? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
+### `<VideoPlayer source autoplay? surfaceId? controls? resizeMode? repeat? muted? orientation? fullscreenOrientation? autoFullscreenOnRotate? pauseOnFocusLost? isFocused? live? leftTopIcon? rightTopIcon? thumbnail? isBlur? blurType? blurAmount? onLoadComplete? onBuffering? onError? ref? …ViewProps>`
 Convenience: `setSource` (handoff-aware) + `attach` + surface + built-in
 controls. Default `surfaceId` is `player:<source.id>`, so two VideoPlayers
 with the same source id naturally hand the engine to whichever mounted last.
@@ -106,25 +106,28 @@ Minimal chrome: play/pause, seek bar, times, mute, fullscreen toggle,
 tap-to-show, double-tap seek. Build your own from the hooks if you need
 custom design.
 
-Live state comes from the store (set via `VideoPlayer`'s `live` / `liveIcon`,
-or `useVideo().setLive(live, liveIcon)`), so the same controls show it inline
-and in the fullscreen host. When live: the seek bar/times are hidden (mute +
-fullscreen remain) and the `liveIcon` badge sticks to the **top-right, always
-visible** — it does not auto-hide with the rest of the controls.
+Live state comes from the store (set via `VideoPlayer`'s `live` /
+`leftTopIcon` / `rightTopIcon`, or `useVideo().setLive(live, leftTopIcon)`),
+so the same controls show it inline and in the fullscreen host. When live:
+the seek bar/times are hidden (mute + fullscreen remain) and the
+`leftTopIcon` / `rightTopIcon` badges stick to the **top corners, always
+visible** — they do not auto-hide with the rest of the controls.
 
-Both are single slots on the one shared store, so ownership matters when several
-players are mounted at once (carousels, feeds):
+All three are single slots on the one shared store, so ownership matters when
+several players are mounted at once (carousels, feeds):
 
 - **`live` is pinned per source id.** `setLive()` records the value against
   whatever video is current when you call it, so the pin travels with that video
   and is restored when the engine hands it back. It does not leak onto an
   unrelated video, and a source you never pinned is still free to be detected by
   the engine.
-- **`liveIcon` registrations are stacked.** `registerLiveIcon(renderer)` /
-  `unregisterLiveIcon(renderer)` (what `VideoPlayer` uses) show the newest
-  registration and fall back to a still-mounted sibling's when it is removed,
-  in any order. Prefer them over `setLiveIcon()` from a component —
-  `setLiveIcon()` is a raw override that does not participate in the stack.
+- **`leftTopIcon`/`rightTopIcon` registrations are stacked**, independently of
+  each other. `registerLeftTopIcon(renderer)` / `unregisterLeftTopIcon(renderer)`
+  (and the `rightTopIcon` equivalents — what `VideoPlayer` uses) show the
+  newest registration and fall back to a still-mounted sibling's when it is
+  removed, in any order. Prefer them over `setLeftTopIcon()`/`setRightTopIcon()`
+  from a component — those are raw overrides that do not participate in the
+  stack.
 
 ### `<GestureOverlay onSingleTap? onDoubleTapLeft? onDoubleTapRight? onLongPress?>`
 Tap-gesture layer used by VideoControls, exported as a building block.

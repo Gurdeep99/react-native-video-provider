@@ -44,9 +44,10 @@ export interface VideoControlsProps {
 /**
  * Minimal built-in chrome: play/pause, seek bar, time, mute and fullscreen
  * toggles, with tap-to-show / double-tap-to-seek gestures. `live` and the
- * live badge come from the store (set via VideoPlayer's `live` / `liveIcon`),
- * so they show inline and in the fullscreen host alike. Apps wanting a custom
- * design can ignore this and build on usePlayback()/useVideo().
+ * live badges come from the store (set via VideoPlayer's `live` /
+ * `leftTopIcon` / `rightTopIcon`), so they show inline and in the fullscreen
+ * host alike. Apps wanting a custom design can ignore this and build on
+ * usePlayback()/useVideo().
  */
 export function VideoControls({
   doubleTapSeek = 10,
@@ -66,7 +67,8 @@ export function VideoControls({
   const muted = usePlayback((s) => s.muted);
   const fullscreen = usePlayback((s) => s.fullscreen);
   const live = usePlayback((s) => s.live);
-  const liveIcon = usePlayback((s) => s.liveIcon);
+  const leftTopIcon = usePlayback((s) => s.leftTopIcon);
+  const rightTopIcon = usePlayback((s) => s.rightTopIcon);
   const online = usePlayback((s) => s.online);
 
   const feedArriving = playing || buffered > 0 || position > 0;
@@ -242,15 +244,29 @@ export function VideoControls({
           <ActivityIndicator size="large" color="#fff" />
         </View>
       ) : null}
-      {/* Live badge: top-left, above the controls, always visible while live —
-          it does NOT hide with the auto-hiding chrome (rendered last + high
-          zIndex so it stays on top). */}
-      {live && liveIcon ? (
+      {/* Live badges: top corners, above the controls, always visible while
+          live — they do NOT hide with the auto-hiding chrome (rendered last
+          + high zIndex so they stay on top). */}
+      {live && leftTopIcon ? (
         <View
-          style={[styles.liveBadge, fullscreen && styles.liveBadgeFullscreen]}
+          style={[
+            styles.leftTopIcon,
+            fullscreen && styles.leftTopIconFullscreen,
+          ]}
           pointerEvents="none"
         >
-          {liveIcon()}
+          {leftTopIcon()}
+        </View>
+      ) : null}
+      {live && rightTopIcon ? (
+        <View
+          style={[
+            styles.rightTopIcon,
+            fullscreen && styles.rightTopIconFullscreen,
+          ]}
+          pointerEvents="none"
+        >
+          {rightTopIcon()}
         </View>
       ) : null}
     </View>
@@ -286,7 +302,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
   },
-  liveBadge: {
+  leftTopIcon: {
     position: 'absolute',
     top: 10,
     left: 10,
@@ -295,9 +311,22 @@ const styles = StyleSheet.create({
   },
   // Extra inset in fullscreen so the badge clears the status-bar / landscape
   // notch area.
-  liveBadgeFullscreen: {
+  leftTopIconFullscreen: {
     top: 20,
     left: 44,
+  },
+  rightTopIcon: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    elevation: 10,
+  },
+  // Extra inset in fullscreen so the badge clears the status-bar / landscape
+  // notch area.
+  rightTopIconFullscreen: {
+    top: 20,
+    right: 44,
   },
   topRow: {
     flexDirection: 'row',

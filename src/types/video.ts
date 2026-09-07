@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 
-/** Renders a live indicator (badge / Lottie) shown while a live stream plays. */
-export type LiveIconRenderer = () => ReactNode;
+/**
+ * Renders a badge (icon / Lottie) shown in a top corner while a live stream
+ * plays — see `VideoPlayerProps.leftTopIcon` / `rightTopIcon`.
+ */
+export type TopIconRenderer = () => ReactNode;
 
 export interface VideoSource {
   /**
@@ -93,8 +96,10 @@ export interface VideoState {
   floating: boolean;
   /** True while the active video is a live stream (hides the seek bar). */
   live: boolean;
-  /** Renderer for the persistent live badge, or null. */
-  liveIcon: LiveIconRenderer | null;
+  /** Renderer for the persistent top-left live badge, or null. */
+  leftTopIcon: TopIconRenderer | null;
+  /** Renderer for the persistent top-right live badge, or null. */
+  rightTopIcon: TopIconRenderer | null;
   mode: PlayerMode;
   /** Surface the player is currently requested/attached to. */
   surfaceId: string | null;
