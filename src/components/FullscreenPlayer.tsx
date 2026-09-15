@@ -130,6 +130,14 @@ export function FullscreenPlayer() {
         statusBarTranslucent
         supportedOrientations={modalOrientations(fullscreenLock)}
         onRequestClose={() => manager.exitFullscreen()}
+        // <VideoSurface autoAttach> below attaches as soon as it mounts —
+        // which, under a Modal, is before the modal has actually finished
+        // presenting (it's a genuinely new window, not just a subview add).
+        // The AVPlayerLayer can end up parented into a view the window
+        // compositor hasn't connected yet: audio plays, black frame. Once
+        // the Modal confirms it's actually up, force a reassert regardless
+        // of whether the surface pointer looks unchanged.
+        onShow={() => manager.reassertVideoOutput()}
       >
         <View style={styles.container}>{content}</View>
       </Modal>

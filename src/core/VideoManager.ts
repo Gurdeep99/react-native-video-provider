@@ -979,6 +979,23 @@ export class VideoManager {
   }
 
   /**
+   * Force the engine to re-parent its video output onto the surface it's
+   * currently attached to, bypassing `attach()`'s "already parented, nothing
+   * to do" fast path.
+   *
+   * That fast path is exactly why a plain `attach()` can't fix a render path
+   * that's gone stale while the surface *pointer* itself hasn't changed —
+   * e.g. iOS presenting the fullscreen `Modal` as a genuinely new window: the
+   * surface mounts and attaches immediately (before presentation finishes),
+   * so the AVPlayerLayer can end up parented into a view the window
+   * compositor hasn't actually connected yet — audio fine, black frame. Use
+   * this once presentation is confirmed done (e.g. the Modal's `onShow`).
+   */
+  reassertVideoOutput(): void {
+    NativeVideo.reassertVideoOutput();
+  }
+
+  /**
    * Resume an autoplay source that has come back into focus.
    *
    * Deliberately narrow: it only fires for a source the app asked to autoplay,
