@@ -932,6 +932,30 @@ describe('VideoManager', () => {
       expect(native.play).toHaveBeenCalled();
     });
 
+    it('does NOT force-reload a live source, even though its position never advances', () => {
+      // Regression test: a live source's position always reports 0 (see
+      // emitProgress), so the "did playback advance" check can never pass
+      // for it — verifyResume() used to fall through and force a reload on
+      // every single resume for live (any surface reattach — entering or
+      // exiting fullscreen included), which is exactly what its own doc
+      // comment already claimed was excluded but never actually was.
+      jest.useFakeTimers();
+      manager.setSource(video('liveA'), { autoplay: true });
+      manager.setLive(true);
+      fireLoaded();
+      native.reload.mockClear();
+      native.reloadFromPosition.mockClear();
+
+      // Every reattach (fullscreen enter/exit, scrolling back into view, …)
+      // runs through here.
+      manager.attach('feed');
+
+      jest.advanceTimersByTime(5000);
+      expect(native.reload).not.toHaveBeenCalled();
+      expect(native.reloadFromPosition).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+
     it('does NOT resume a source that was never meant to autoplay', () => {
       manager.setSource(video('yt1'), { autoplay: false });
       native.play.mockClear();

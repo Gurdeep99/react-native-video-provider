@@ -1081,6 +1081,16 @@ export class VideoManager {
       if (s.loading) {
         return;
       }
+      // Live streams always report position 0 (see emitProgress), so
+      // `positionAdvanced` below can never be true for them — this function
+      // used to fall through and force a `reload()` on every single resume
+      // for a live source (any surface reattach, fullscreen enter/exit
+      // included), which is the actual bug this comment already claimed was
+      // handled: the live-retry + stall watchdogs cover recovery there
+      // instead, so just leave it alone.
+      if (s.live) {
+        return;
+      }
       // Check that playback actually advanced. A player that reports 'playing'
       // but whose position hasn't moved by at least 0.3 s in the verification
       // window is frozen (buffer drained, no new frames decoded).

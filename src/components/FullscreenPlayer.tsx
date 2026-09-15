@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   BackHandler,
   Modal,
@@ -74,7 +74,8 @@ export function FullscreenPlayer() {
   }, [manager, fullscreen]);
 
   // Re-attach the fullscreen surface whenever connectivity is restored while
-  // fullscreen is active.
+  // fullscreen is ALREADY active (not on the transition into fullscreen —
+  // see wasFullscreen below).
   //
   // A network drop can cause iOS UIKit to silently recreate the Modal's view
   // hierarchy, which invalidates the UIView pointer held by the native surface
@@ -86,8 +87,18 @@ export function FullscreenPlayer() {
   // mounted, so the native view is valid; attach() re-parents the AVPlayerLayer
   // / TextureView into it, clearing the black frame. This runs on every online
   // change so that an offline → online transition always heals the output.
+  const wasFullscreen = useRef(false);
   useEffect(() => {
     if (!fullscreen) {
+      wasFullscreen.current = false;
+      return;
+    }
+    if (!wasFullscreen.current) {
+      // Just entered fullscreen: <VideoSurface autoAttach> below already
+      // attaches on its own mount. Calling attach() again here raced it —
+      // two reparent/native-rebind cycles back to back for the same surface,
+      // which is a real source of the visible glitch/frame-skip on entry.
+      wasFullscreen.current = true;
       return;
     }
     manager.attach(FULLSCREEN_SURFACE_ID);

@@ -12,6 +12,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.SurfaceView
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -1033,8 +1035,27 @@ setInterval(function(){if(player&&player.getCurrentTime){post({type:'time',posit
     mainHandler.post {
       if (currentSurfaceId == surfaceId && pv.parent === container) {
         val exo = player ?: return@post
-        pv.player = null
-        pv.player = exo
+        // Rebind the renderer straight to the fresh Surface/SurfaceTexture,
+        // instead of cycling `pv.player` (null then back). PlayerView.setPlayer
+        // no-ops on the same instance, which is exactly why the old code had
+        // to null it first — but that path also tears down and re-adds
+        // PlayerView's whole internal listener/UI binding, and leaves the
+        // renderer with NO output surface at all for a full frame in between
+        // (posted here, then null, then re-set): a visible glitch/frame-skip,
+        // worst on a live stream that can't just re-render a cached frame
+        // across the gap. Calling setVideoTextureView/setVideoSurfaceView
+        // directly is the same swap ExoPlayer already does gracefully for
+        // PiP/multi-window resizes — no listener churn, no all-null moment.
+        when (val surfaceView = pv.videoSurfaceView) {
+          is TextureView -> exo.setVideoTextureView(surfaceView)
+          is SurfaceView -> exo.setVideoSurfaceView(surfaceView)
+          else -> {
+            // Unexpected surface type (custom surface_type) — fall back to
+            // the blunt cycle rather than leaving the output stale.
+            pv.player = null
+            pv.player = exo
+          }
+        }
       }
     }
   }
