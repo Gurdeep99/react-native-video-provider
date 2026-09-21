@@ -70,11 +70,46 @@ export function VideoControls({
   const leftTopIcon = usePlayback((s) => s.leftTopIcon);
   const rightTopIcon = usePlayback((s) => s.rightTopIcon);
   const online = usePlayback((s) => s.online);
+  const currentVideoId = usePlayback((s) => s.currentVideo?.id);
 
+  // Has this live session reached `playing` at least once? Computed during
+  // render (not an effect) so it's already correct for THIS render, not one
+  // behind. Reset per video so a new live source gets its own fresh
+  // "connecting" grace period.
+  const hasEverPlayedRef = useRef(false);
+  const lastVideoIdRef = useRef(currentVideoId);
+  if (lastVideoIdRef.current !== currentVideoId) {
+    lastVideoIdRef.current = currentVideoId;
+    hasEverPlayedRef.current = false;
+  }
+  if (playing) {
+    hasEverPlayedRef.current = true;
+  }
+
+  // Only relevant before the very first `playing` of this session: hides the
+  // loader a beat early, the moment data visibly starts arriving, rather
+  // than waiting for the engine's official 'playing' confirmation.
   const feedArriving = playing || buffered > 0 || position > 0;
+  // `!playing` is the hard override: `loading`/`buffering` can be
+  // momentarily stale/true right as playback actually starts (a status blip
+  // arriving a tick before/after onIsPlayingChanged), which showed the
+  // loader over an already-playing frame. Once the engine says it's
+  // playing, never show it — in either the inline player or the fullscreen
+  // host (this component is shared by both).
+  //
+  // For live, once playback has genuinely started at least once, ANY later
+  // loading/buffering is a real stall (dropped connection, etc.) and must
+  // show the loader every time — `buffered`/`position` often stay stuck at
+  // a stale non-zero value mid-stall rather than reliably resetting to 0,
+  // so `feedArriving` alone used to keep the loader hidden right through a
+  // real stall. Once the feed recovers, `loading`/`buffering` clear and the
+  // loader disappears on its own.
   const showLoader =
     !isBlur &&
-    (live ? (loading || buffering) && !feedArriving : loading || buffering);
+    !playing &&
+    (live
+      ? (loading || buffering) && (hasEverPlayedRef.current || !feedArriving)
+      : loading || buffering);
   const showOffline = !online && (loading || buffering);
 
   const [visible, setVisible] = useState(true);
