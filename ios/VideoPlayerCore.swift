@@ -958,6 +958,24 @@ public final class VideoPlayerCore: NSObject {
     }
   }
 
+  /// A surface's view just landed in a window.
+  ///
+  /// Entering fullscreen moves the video into the Modal's own view hierarchy,
+  /// and an AVPlayerLayer that crossed into a different window can keep
+  /// playing audio while rendering nothing — black picture, sound fine, and it
+  /// only recovers once something forces the presentation path to rebuild
+  /// (the portrait/landscape bounce viewers stumble into by hand). Re-asserting
+  /// here is that force, applied at the exact moment the destination window
+  /// becomes real, rather than hoping an earlier attach already stuck.
+  ///
+  /// Cheap no-op for any surface that isn't the one the engine is on.
+  @objc public func onSurfaceDidMoveToWindow(_ surfaceId: String, view: UIView) {
+    guard surfaceId == currentSurfaceId || surfaceId == pendingSurfaceId else {
+      return
+    }
+    reassertActiveVideoOutput()
+  }
+
   @objc public func onSurfaceUnavailable(_ surfaceId: String, view: UIView) {
     if currentSurfaceId == surfaceId, activeView.superview === view {
       activeView.removeFromSuperview()
@@ -981,9 +999,25 @@ public final class VideoPlayerCore: NSObject {
     if hostView.superview === container { hostView.removeFromSuperview() }
     if let wv = webView, wv.superview === container { wv.removeFromSuperview() }
     view.removeFromSuperview()
+    // Pin to the container instead of frame + autoresizingMask. Surfaces
+    // register — and so can be attached into — from `updateProps`, which runs
+    // before Fabric gives the container its frame, so this used to capture
+    // `container.bounds` == .zero. Nothing sizes an injected native subview
+    // afterwards (Yoga doesn't know about it, and autoresizing from a zero
+    // frame is degenerate), leaving a zero-sized layer: black video, audio
+    // fine, until some later re-attach happened to land post-layout — the
+    // intermittent black screen on entering fullscreen. Constraints resolve
+    // whenever the container is laid out, so attaching no longer has to win a
+    // race with layout.
+    view.translatesAutoresizingMaskIntoConstraints = false
     view.frame = container.bounds
-    view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     container.addSubview(view)
+    NSLayoutConstraint.activate([
+      view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+      view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+      view.topAnchor.constraint(equalTo: container.topAnchor),
+      view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+    ])
     // Keeps the blur (if any) following the video across an engine switch —
     // `view` above may now be a different engine's view than last time.
     attachBlurViewIfNeeded()

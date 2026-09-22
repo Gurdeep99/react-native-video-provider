@@ -23,6 +23,13 @@ public final class VideoSurfaceRegistry: NSObject {
     }
   }
 
+  /// Forwarded from the surface view's `didMoveToWindow` — see
+  /// `VideoPlayerCore.onSurfaceDidMoveToWindow`.
+  @objc(surfaceDidMoveToWindow:view:)
+  public static func didMoveToWindow(_ surfaceId: String, view: UIView) {
+    VideoPlayerCore.shared.onSurfaceDidMoveToWindow(surfaceId, view: view)
+  }
+
   @objc(viewForSurface:)
   public static func view(for surfaceId: String) -> UIView? {
     return views.object(forKey: surfaceId as NSString)

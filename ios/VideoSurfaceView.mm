@@ -48,6 +48,20 @@ using namespace facebook::react;
   [super updateProps:props oldProps:oldProps];
 }
 
+// Registration happens in updateProps — before this view has a frame or a
+// window — so the engine can end up parented into a container that isn't
+// really on screen yet. Entering fullscreen is the case that bites: the video
+// moves into the Modal's hierarchy, and an AVPlayerLayer that crossed windows
+// renders nothing until the presentation path is rebuilt. Tell the core the
+// moment the destination window is real.
+- (void)didMoveToWindow
+{
+  [super didMoveToWindow];
+  if (_surfaceId != nil && self.window != nil) {
+    [VideoSurfaceRegistry surfaceDidMoveToWindow:_surfaceId view:self];
+  }
+}
+
 - (void)prepareForRecycle
 {
   [super prepareForRecycle];
