@@ -101,6 +101,12 @@ export function FullscreenPlayer() {
       wasFullscreen.current = true;
       return;
     }
+    // Only re-attach when coming BACK online — going offline doesn't need a
+    // re-attach, and doing one triggers resumeOnFocus() inside attach() which
+    // would restart the player we just network-paused.
+    if (!online) {
+      return;
+    }
     manager.attach(FULLSCREEN_SURFACE_ID);
   }, [manager, fullscreen, online]);
 

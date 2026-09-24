@@ -110,7 +110,12 @@ export function VideoControls({
     (live
       ? (loading || buffering) && (hasEverPlayedRef.current || !feedArriving)
       : loading || buffering);
-  const showOffline = !online && (loading || buffering);
+  // For live streams, show the offline indicator the moment connectivity
+  // drops — don't wait for the engine to report buffering/loading. The
+  // manager pauses the native player on disconnect, so the store will say
+  // `paused` (not `buffering`), but the viewer should still see "No
+  // Internet Connection" immediately rather than a frozen paused frame.
+  const showOffline = !online && (loading || buffering || (live && !playing));
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

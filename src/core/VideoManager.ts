@@ -353,35 +353,27 @@ export class VideoManager {
           this.set({ online });
           this.log('netinfo', { online, cameOnline, wentOffline });
 
-          // For live streams, pause instantly when connectivity drops rather
-          // than letting the player buffer indefinitely until it stalls or
-          // errors — the viewer should immediately see "No Internet Connection"
-          // rather than a frozen frame with a spinning loader.
+          // For live streams, pause the native player the instant connectivity
+          // drops. The UI reads `!online && live` to show the offline indicator
+          // immediately — no need to force the store into an artificial state.
+          // `pauseForFocusLoss` (not `pause()`) keeps `userPaused` false so
+          // the reconnect path can restart automatically.
           if (wentOffline) {
             const s = this.store.getState();
             if (s.live && !this.userPaused) {
               this.networkPausedLive = true;
-              // pauseForFocusLoss, not pause(): don't set userPaused so the
-              // live retry on reconnect can restart playback automatically.
               this.pauseForFocusLoss();
-              // Force the store to buffering so showOffline
-              // (!online && (loading || buffering)) becomes true and the
-              // "No Internet Connection" message appears immediately.
-              this.clearStallWatchdog();
-              this.set({
-                playing: false,
-                buffering: true,
-                status: 'buffering' as PlaybackStatus,
-              });
-              this.log('netinfo -> live paused instantly (offline)');
+              this.log('netinfo -> live paused (offline)');
             }
           }
 
           if (cameOnline) {
             if (this.networkPausedLive) {
-              // Live stream was paused by us on disconnect — restart it now.
+              // We paused this live stream on disconnect — reload it now.
+              // Direct reload(), not scheduleLiveRetry(): the stream was
+              // healthy before the drop so there's no reason for backoff.
               this.networkPausedLive = false;
-              this.scheduleLiveRetry();
+              this.reload();
             } else if (this.pendingLiveRetry) {
               // Reconnected — run any live retry we deferred while offline.
               this.pendingLiveRetry = false;
@@ -498,6 +490,13 @@ export class VideoManager {
         if (id !== undefined && this.explicitLive.has(id)) {
           return;
         }
+        // While we've network-paused a live stream, suppress a native
+        // `live: false` — the stream is still live, the connection is just
+        // gone. Letting it through hides the live badges until the reload
+        // on reconnect re-detects live-ness.
+        if (this.networkPausedLive && !e.live) {
+          return;
+        }
         this.set({ live: e.live });
         if (!e.live) {
           this.clearLiveRetry();
@@ -507,14 +506,6 @@ export class VideoManager {
   }
 
   private applyStatus(status: PlaybackStatus): void {
-    // When a live stream is network-paused we've already forced the store to
-    // `buffering` so the offline indicator shows. The native player will emit
-    // `paused` as a result of our NativeVideo.pause() call — suppress it so
-    // it doesn't overwrite the UI state we set. Other statuses (error, etc.)
-    // are still processed normally.
-    if (this.networkPausedLive && status === 'paused') {
-      return;
-    }
     const prev = this.store.getState();
     this.set({
       status,
@@ -562,11 +553,7 @@ export class VideoManager {
       }
       return;
     }
-    if (
-      this.stallTimer ||
-      this.stallRecoveries >= MAX_STALL_RECOVERIES ||
-      this.networkPausedLive
-    ) {
+    if (this.stallTimer || this.stallRecoveries >= MAX_STALL_RECOVERIES) {
       return;
     }
     const delay = status === 'error' ? ERROR_STALL_MS : BUFFER_STALL_MS;
@@ -1060,7 +1047,12 @@ export class VideoManager {
    * natively and replayed once the player reports ready.
    */
   private resumeOnFocus(): void {
-    if (!this.config.resumeOnFocus || !this.autoplayIntent || this.userPaused) {
+    if (
+      !this.config.resumeOnFocus ||
+      !this.autoplayIntent ||
+      this.userPaused ||
+      this.networkPausedLive
+    ) {
       return;
     }
     if (!this.store.getState().currentVideo) {
