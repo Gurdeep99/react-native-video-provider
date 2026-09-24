@@ -10,7 +10,7 @@ import {
 import { FULLSCREEN_SURFACE_ID } from '../core/VideoManager';
 import { usePlayback } from '../hooks/usePlayback';
 import { useVideoManager } from '../provider/VideoContext';
-import type { OrientationLock } from '../types/video';
+import type { OrientationLock, TopIconRenderer } from '../types/video';
 import { VideoControls } from './VideoControls';
 import { VideoSurface } from './VideoSurface';
 
@@ -60,6 +60,9 @@ export function FullscreenPlayer() {
   const fullscreen = usePlayback((s) => s.fullscreen);
   const fullscreenLock = usePlayback((s) => s.fullscreenLock);
   const online = usePlayback((s) => s.online);
+  const live = usePlayback((s) => s.live);
+  const leftTopIcon: TopIconRenderer | null = usePlayback((s) => s.leftTopIcon);
+  const rightTopIcon: TopIconRenderer | null = usePlayback((s) => s.rightTopIcon);
 
   // Android hardware back exits fullscreen (the iOS Modal handles its own).
   useEffect(() => {
@@ -123,6 +126,23 @@ export function FullscreenPlayer() {
         style={styles.surface}
       />
       <VideoControls onClose={() => manager.exitFullscreen()} />
+      {/* Live badges rendered at the FullscreenPlayer level — directly in the
+          Modal's view hierarchy, AFTER VideoControls — so they reliably paint
+          on top of the native AVPlayerLayer / TextureView. Inside VideoControls
+          they're siblings of the absoluteFill surface overlay, but on iOS
+          Modals the native video layer can composite above regular RN views,
+          hiding the badges even with zIndex. Rendering here as the last
+          children of the Modal container guarantees they sit on top. */}
+      {live && leftTopIcon ? (
+        <View style={styles.fsBadgeLeft} pointerEvents="none">
+          {leftTopIcon()}
+        </View>
+      ) : null}
+      {live && rightTopIcon ? (
+        <View style={styles.fsBadgeRight} pointerEvents="none">
+          {rightTopIcon()}
+        </View>
+      ) : null}
     </>
   );
 
@@ -183,5 +203,22 @@ const styles = StyleSheet.create({
   },
   surface: {
     flex: 1,
+  },
+  // Fullscreen-level live badges — rendered as the last children of the Modal
+  // container so they sit on top of everything, including the native video
+  // layer. Matches the insets from VideoControls' fullscreen badge styles.
+  fsBadgeLeft: {
+    position: 'absolute',
+    top: 20,
+    left: 44,
+    zIndex: 10,
+    elevation: 10,
+  },
+  fsBadgeRight: {
+    position: 'absolute',
+    top: 20,
+    right: 44,
+    zIndex: 10,
+    elevation: 10,
   },
 });
