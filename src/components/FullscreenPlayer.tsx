@@ -125,7 +125,7 @@ export function FullscreenPlayer() {
       <Modal
         visible
         transparent={false}
-        animationType="fade"
+        animationType="none"
         presentationStyle="fullScreen"
         statusBarTranslucent
         supportedOrientations={modalOrientations(fullscreenLock)}
@@ -137,7 +137,19 @@ export function FullscreenPlayer() {
         // compositor hasn't connected yet: audio plays, black frame. Once
         // the Modal confirms it's actually up, force a reassert regardless
         // of whether the surface pointer looks unchanged.
-        onShow={() => manager.reassertVideoOutput()}
+        //
+        // animationType="none" eliminates the fade transition so it doesn't
+        // layer a JS-driven animation on top of the system rotation animation —
+        // the combination produced a visible glitch on portrait→landscape entry.
+        // The system rotation animation alone already looks correct and natural.
+        //
+        // Two reasserts: the first fires immediately on Modal confirmation;
+        // the second catches devices where the window compositor takes longer
+        // to connect (surface was valid but the CALayer draw cycle hadn't run).
+        onShow={() => {
+          manager.reassertVideoOutput();
+          setTimeout(() => manager.reassertVideoOutput(), 150);
+        }}
       >
         <View style={styles.container}>{content}</View>
       </Modal>
