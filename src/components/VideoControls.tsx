@@ -203,8 +203,8 @@ export function VideoControls({
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <GestureOverlay
         onSingleTap={toggleVisible}
-        onDoubleTapLeft={isBlur ? undefined : () => manager.seekBy(-doubleTapSeek)}
-        onDoubleTapRight={isBlur ? undefined : () => manager.seekBy(doubleTapSeek)}
+        onDoubleTapLeft={live || isBlur ? undefined : () => manager.seekBy(-doubleTapSeek)}
+        onDoubleTapRight={live || isBlur ? undefined : () => manager.seekBy(doubleTapSeek)}
       />
       {visible ? (
         <View style={styles.chrome} pointerEvents="box-none">
