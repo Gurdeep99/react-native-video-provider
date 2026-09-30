@@ -473,6 +473,34 @@ describe('VideoManager', () => {
 
       expect(native.play).toHaveBeenCalled();
     });
+
+    it('re-attaches the current surface on foreground, not just reassert', () => {
+      // Device lock while fullscreen: iOS can rebuild the Modal's view
+      // hierarchy, leaving the registry pointing at a dead UIView. A bare
+      // reassertVideoOutput() re-parents onto that stale pointer — audio
+      // returns, the picture stays frozen. Live makes it terminal, because
+      // verifyResume() returns early for live and the stall watchdog only
+      // arms on buffering/error, so nothing else heals it.
+      manager.setSource(video('a'), { surfaceId: 'feed', autoplay: true });
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+
+      backgroundTheApp();
+      native.attach.mockClear();
+      mockAppStateListener?.('active');
+
+      expect(native.attach).toHaveBeenCalledWith(FULLSCREEN_SURFACE_ID);
+    });
+
+    it('re-attaches the inline surface on foreground too', () => {
+      manager.setSource(video('a'), { surfaceId: 'feed', autoplay: true });
+
+      backgroundTheApp();
+      native.attach.mockClear();
+      mockAppStateListener?.('active');
+
+      expect(native.attach).toHaveBeenCalledWith('feed');
+    });
   });
 
   describe('ShowVideoFullScreenTrigger / ExitVideoFullScreenTrigger (ref aliases)', () => {
