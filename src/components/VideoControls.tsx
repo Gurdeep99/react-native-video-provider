@@ -219,12 +219,9 @@ export function VideoControls({
             {!live ? muteButton : <View />}
           </View>
 
-          {/* Center play/pause — hidden while the loader shows. For live it
-              only ever renders the pause half: while a live stream is
-              stopped the persistent resume button below is on screen
-              instead, and rendering both would stack two play buttons in
-              the same spot. */}
-          {showLoader || (live && !playing) ? (
+          {/* Center play/pause — hidden while the loader shows and hidden
+              entirely for live (only the loader appears). */}
+          {live || showLoader ? (
             <View />
           ) : (
             <Pressable
@@ -287,11 +284,11 @@ export function VideoControls({
           <ActivityIndicator size="large" color="#fff" />
         </View>
       ) : live && !playing ? (
-        // Manual resume for live. Replaces the chrome's play/pause button
-        // (which only shows its pause half for live) while a live stream is
-        // stopped — by a viewer pause, an audio-session interruption, a
-        // device lock, a render surface that came back dead, or a
-        // focus-resume that was blocked by the `userPaused` latch.
+        // Manual resume for live. A live source deliberately has no pause
+        // control, so when one stops there is otherwise nothing on screen to
+        // restart it — an audio-session interruption, a device lock, a render
+        // surface that came back dead, or a focus-resume that was blocked by
+        // the `userPaused` latch all leave it stopped and silent.
         //
         // Sits here with the loader rather than inside the auto-hiding chrome
         // above: a stream that is stuck should not need a tap to reveal the
