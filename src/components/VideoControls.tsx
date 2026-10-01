@@ -35,8 +35,9 @@ export interface VideoControlsProps {
   /**
    * Mirrors the player's `isBlur` prop: while true, hides the loading/
    * buffering spinner (in every case, not just while offline — a spinner
-   * over a blurred picture reads as broken rather than intentional) and the
-   * mute and fullscreen buttons. Default false.
+   * over a blurred picture reads as broken rather than intentional), the
+   * center play/pause button, and the mute and fullscreen buttons. Default
+   * false.
    */
   isBlur?: boolean;
 }
@@ -248,9 +249,14 @@ export function VideoControls({
             {!live ? muteButton : <View />}
           </View>
 
-          {/* Center play/pause — shown for live and on-demand alike, hidden
-              only while the loader occupies the same spot. */}
-          {showLoader ? (
+          {/* Center play/pause — shown for live and on-demand alike. Hidden
+              while the loader occupies the same spot, and hidden entirely
+              while blurred: the blur is a deliberate cover (age gate,
+              paused-content veil), so offering transport controls over it
+              invites the viewer to drive a picture they're not meant to see
+              yet. Matches the mute and fullscreen buttons, which `isBlur`
+              already removes. */}
+          {showLoader || isBlur ? (
             <View />
           ) : (
             <Pressable
