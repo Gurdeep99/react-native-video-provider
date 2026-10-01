@@ -474,32 +474,46 @@ describe('VideoManager', () => {
       expect(native.play).toHaveBeenCalled();
     });
 
-    it('re-attaches the current surface on foreground, not just reassert', () => {
-      // Device lock while fullscreen: iOS can rebuild the Modal's view
-      // hierarchy, leaving the registry pointing at a dead UIView. A bare
-      // reassertVideoOutput() re-parents onto that stale pointer — audio
-      // returns, the picture stays frozen. Live makes it terminal, because
-      // verifyResume() returns early for live and the stall watchdog only
-      // arms on buffering/error, so nothing else heals it.
+    it('restores the video output on foreground while fullscreen', () => {
+      // Device lock in landscape fullscreen: the OS detaches the video output,
+      // so the app comes back to a black frame. Re-parenting is what rebuilds
+      // the render path.
       manager.setSource(video('a'), { surfaceId: 'feed', autoplay: true });
       manager.enterFullscreen();
       manager.attach(FULLSCREEN_SURFACE_ID);
 
       backgroundTheApp();
-      native.attach.mockClear();
+      native.reassertVideoOutput.mockClear();
       mockAppStateListener?.('active');
 
-      expect(native.attach).toHaveBeenCalledWith(FULLSCREEN_SURFACE_ID);
+      expect(native.reassertVideoOutput).toHaveBeenCalled();
     });
 
-    it('re-attaches the inline surface on foreground too', () => {
+    it('restores the video output even when playback will not resume', () => {
+      // The regression this guards: restoring the picture used to happen only
+      // inside resumeOnFocus(), which is gated on userPaused. A viewer who
+      // paused by hand and then locked the phone came back to a permanently
+      // black frame — playback policy and "can the surface draw at all" are
+      // separate concerns.
       manager.setSource(video('a'), { surfaceId: 'feed', autoplay: true });
+      manager.enterFullscreen();
+      manager.attach(FULLSCREEN_SURFACE_ID);
+      manager.pause(); // explicit viewer pause -> userPaused latch
 
       backgroundTheApp();
-      native.attach.mockClear();
+      native.reassertVideoOutput.mockClear();
+      native.play.mockClear();
       mockAppStateListener?.('active');
 
-      expect(native.attach).toHaveBeenCalledWith('feed');
+      expect(native.reassertVideoOutput).toHaveBeenCalled();
+      expect(native.play).not.toHaveBeenCalled(); // still respects the latch
+    });
+
+    it('does not touch the output when no video is loaded', () => {
+      native.reassertVideoOutput.mockClear();
+      mockAppStateListener?.('active');
+
+      expect(native.reassertVideoOutput).not.toHaveBeenCalled();
     });
   });
 

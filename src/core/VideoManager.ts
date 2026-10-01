@@ -309,11 +309,45 @@ export class VideoManager {
     }
     this.appStateSub = appState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // Restoring the picture and resuming playback are two different
+        // concerns and must not share a gate — see restoreOutputOnForeground.
+        this.restoreOutputOnForeground();
         this.resumeOnFocus();
       } else {
         this.pauseOnBackground();
       }
     });
+  }
+
+  /**
+   * Re-establish the render path after the app returns to the foreground.
+   *
+   * Both platforms tear the video output down while backgrounded — iOS most
+   * visibly, where a locked screen leaves the AVPlayerLayer detached from its
+   * player and showing nothing once the app comes back. Re-parenting rebuilds
+   * that path; `reassertActiveVideoOutput` natively does the full
+   * removeFromSuperview -> attachTo cycle plus an explicit player rebind,
+   * which `attach()` alone cannot do (it early-returns when the view is
+   * already in the target container, which it always is here).
+   *
+   * Deliberately NOT part of `resumeOnFocus`, which is what this used to rely
+   * on. That method is gated on `autoplayIntent`/`userPaused`/
+   * `networkPausedLive`, so any of those left the picture black on return —
+   * a viewer who paused by hand before locking the phone came back to a dead
+   * frame with no way to recover short of re-entering fullscreen. Whether we
+   * resume playback is a policy decision; whether the surface can draw at all
+   * is not, so this runs for every foreground with a loaded video.
+   *
+   * It matters most for live in fullscreen, where nothing else would heal it:
+   * verifyResume() returns early for `live`, and the stall watchdog only arms
+   * on `buffering`/`error` — a black-but-"playing" surface is neither.
+   */
+  private restoreOutputOnForeground(): void {
+    if (!this.store.getState().currentVideo) {
+      return;
+    }
+    this.log('foreground -> reassert video output');
+    NativeVideo.reassertVideoOutput();
   }
 
   /**
@@ -1055,31 +1089,8 @@ export class VideoManager {
     ) {
       return;
     }
-    const s = this.store.getState();
-    if (!s.currentVideo) {
+    if (!this.store.getState().currentVideo) {
       return;
-    }
-    // Refresh the surface registry pointer BEFORE reasserting.
-    //
-    // Backgrounding — a device lock in particular — lets iOS UIKit silently
-    // recreate a presented Modal's view hierarchy, which invalidates the
-    // UIView the registry holds without ever unmounting the JS surface. This
-    // is the same failure FullscreenPlayer already heals for `online`
-    // transitions, and nothing was healing it for app foreground.
-    //
-    // reassertVideoOutput() alone cannot fix it: it re-parents onto whatever
-    // the registry currently points at, so against a stale pointer it just
-    // re-parents onto the dead view — audio returns, the picture stays frozen.
-    // attach() re-reads the still-mounted surface and repairs the pointer.
-    //
-    // It matters most for live in fullscreen, where nothing else recovers:
-    // verifyResume() returns early for `live`, and the stall watchdog only
-    // arms on `buffering`/`error` — a frozen-but-"playing" surface is neither.
-    //
-    // NativeVideo.attach directly rather than this.attach(), which calls
-    // resumeOnFocus() on the way out and would recurse straight back in here.
-    if (s.surfaceId) {
-      NativeVideo.attach(s.surfaceId);
     }
     // Intentionally not gated on `playing`. Coming back from the background
     // the OS may have stopped playback without the engine reporting it (most
@@ -1087,13 +1098,12 @@ export class VideoManager {
     // stale `playing: true` that would skip the resume entirely. play() is
     // idempotent, so issuing it unconditionally is the safer path.
     //
-    // reassertVideoOutput() still runs unconditionally after the attach above:
-    // attach() has a native "already parented, nothing to do" fast path, so on
-    // the common case where the pointer was still valid it is the reassert
-    // that actually forces the re-parent.
-    this.log('focus resume -> attach + reassert + play + verify', {
-      surfaceId: s.surfaceId,
-    });
+    // reassertVideoOutput() first and unconditionally: if the engine already
+    // recovered internally (paused, not stopped — no error, no idle transition)
+    // there is no native signal telling us the render surface went stale, so we
+    // can't wait for one. We already know playback was interrupted; that alone
+    // is reason enough to re-parent.
+    this.log('focus resume -> reassert + play + verify');
     NativeVideo.reassertVideoOutput();
     NativeVideo.play();
     this.verifyResume();

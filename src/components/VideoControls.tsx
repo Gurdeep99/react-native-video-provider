@@ -219,9 +219,12 @@ export function VideoControls({
             {!live ? muteButton : <View />}
           </View>
 
-          {/* Center play/pause — hidden while the loader shows and hidden
-              entirely for live (only the loader appears). */}
-          {live || showLoader ? (
+          {/* Center play/pause — hidden while the loader shows. For live it
+              only ever renders the pause half: while a live stream is
+              stopped the persistent resume button below is on screen
+              instead, and rendering both would stack two play buttons in
+              the same spot. */}
+          {showLoader || (live && !playing) ? (
             <View />
           ) : (
             <Pressable
@@ -282,6 +285,33 @@ export function VideoControls({
       ) : showLoader ? (
         <View style={styles.centerLoader} pointerEvents="none">
           <ActivityIndicator size="large" color="#fff" />
+        </View>
+      ) : live && !playing ? (
+        // Manual resume for live. Replaces the chrome's play/pause button
+        // (which only shows its pause half for live) while a live stream is
+        // stopped — by a viewer pause, an audio-session interruption, a
+        // device lock, a render surface that came back dead, or a
+        // focus-resume that was blocked by the `userPaused` latch.
+        //
+        // Sits here with the loader rather than inside the auto-hiding chrome
+        // above: a stream that is stuck should not need a tap to reveal the
+        // controls before it can be recovered. Only reachable when there is
+        // nothing else to show — offline and loading both take precedence,
+        // since neither is the viewer's problem to solve.
+        //
+        // `play()` rather than `toggle()`: the only reason this is on screen
+        // is that playback has stopped, and play() additionally clears the
+        // engine's `userPaused` latch so a later focus-resume isn't blocked.
+        <View style={styles.centerLoader} pointerEvents="box-none">
+          <Pressable
+            style={styles.playButton}
+            onPress={() => manager.play()}
+            hitSlop={16}
+            accessibilityRole="button"
+            accessibilityLabel="Resume live video"
+          >
+            <SvgIcons icon="playPause" type="play" size={34} fill="#fff" />
+          </Pressable>
         </View>
       ) : null}
       {/* Live badges: top corners, above the controls, always visible while
