@@ -122,15 +122,29 @@ export function VideoControls({
   // Which half of the play/pause button to draw. `playing` alone isn't
   // enough: it can lag the picture actually moving by a tick or two, which
   // drew a play icon over a video that was already running — most visibly on
-  // live, where there's no seek bar to contradict it. So also treat the
-  // video as playing once playback has demonstrably started: past the 1%
-  // mark of a known duration, or any progress at all when the duration is
-  // unknown (live). `paused` is the viewer's own intent and always wins, so
-  // a deliberate pause flips back to play immediately; `ended` does too,
-  // since a finished video is stopped at its last frame, not playing.
-  const started = duration > 0 ? position / duration >= 0.01 : position > 0;
-  const showPauseIcon =
-    playing || (started && !paused && status !== 'ended');
+  // live, where there's no seek bar to contradict it. So also treat the video
+  // as playing once playback has demonstrably started.
+  //
+  // What counts as "started" has to differ by source, because BOTH engines
+  // deliberately report position 0 for a live stream — its elapsed time grows
+  // without bound and there's no scrubber to drive (VideoPlayerCore.emitProgress,
+  // PlayerCore.emitProgress). A position-based test is therefore always false
+  // for live, i.e. exactly the case this exists for. So:
+  //
+  //   known duration (on-demand) → past the 1% mark
+  //   live / unknown duration    → the feed has produced something: this
+  //                                session reached `playing` at least once,
+  //                                or there's buffered data to draw from
+  //
+  // `paused` is the viewer's own intent and always wins, so a deliberate pause
+  // flips back to play immediately. A video that ended, errored or was never
+  // started isn't playing either, whatever the progress numbers say.
+  const started =
+    duration > 0
+      ? position / duration >= 0.01
+      : hasEverPlayedRef.current || buffered > 0;
+  const stopped = status === 'ended' || status === 'error' || status === 'idle';
+  const showPauseIcon = playing || (started && !paused && !stopped);
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,7 +229,7 @@ export function VideoControls({
   ) : null;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+    <View style={[StyleSheet.absoluteFill, styles.root]} pointerEvents="box-none">
       <GestureOverlay
         onSingleTap={toggleVisible}
         onDoubleTapLeft={live || isBlur ? undefined : () => manager.seekBy(-doubleTapSeek)}
@@ -340,6 +354,20 @@ export function VideoControls({
 }
 
 const styles = StyleSheet.create({
+  // On Android, elevation — not tree order — decides what draws on top, and
+  // the native video output (the PlayerView's TextureView inside
+  // VideoSurfaceView) could composite above a zero-elevation sibling, which
+  // hid this whole overlay's center play/pause button. Both hosts render
+  // <VideoSurface /> and <VideoControls /> as SIBLINGS (see VideoPlayer and
+  // FullscreenPlayer), so the lift has to be on this root: elevation on
+  // `chrome` alone only orders children within the root and never beats the
+  // surface next to it. That's why the live badges needed re-rendering at the
+  // FullscreenPlayer level to stay visible — same cause.
+  root: {
+    zIndex: 5,
+    elevation: 5,
+  },
+  // Kept under the badges' 10 below so they still sit on top of the chrome.
   chrome: {
     position: 'absolute',
     top: 0,
@@ -348,6 +376,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'space-between',
+    zIndex: 5,
+    elevation: 5,
   },
   centerLoader: {
     position: 'absolute',
@@ -357,6 +387,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 5,
+    elevation: 5,
   },
   offlineText: {
     color: '#fff',

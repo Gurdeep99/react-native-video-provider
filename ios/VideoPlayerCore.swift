@@ -269,6 +269,23 @@ public final class VideoPlayerCore: NSObject {
       name: .AVPlayerItemFailedToPlayToEndTime,
       object: nil
     )
+    // Locking the screen detaches the AVPlayerLayer from its player so the
+    // decoder can be released. Audio keeps running (the session is .playback),
+    // but on unlock the layer draws nothing until it is re-associated — the
+    // "audio over a black frame" case. JS already reasserts on AppState
+    // 'active' (VideoManager.restoreOutputOnForeground), and that is enough
+    // inline; it is NOT enough in fullscreen, where the layer lives in a
+    // Modal's own UIWindow that UIKit reconnects to the screen only AFTER the
+    // app is active. A single early reassert there re-parents into a window
+    // the compositor hasn't reattached, and the frame stays black. Observing
+    // this natively lets the retry below keep going until the layer is
+    // genuinely drawing, instead of guessing a delay from JS.
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidBecomeActive(_:)),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
 
     if AVPictureInPictureController.isPictureInPictureSupported() {
       pipController = AVPictureInPictureController(playerLayer: hostView.playerLayer)
@@ -607,6 +624,33 @@ public final class VideoPlayerCore: NSObject {
     if engine == .exo {
       hostView.playerLayer.player = nil
       hostView.playerLayer.player = player
+    }
+  }
+
+  @objc private func appDidBecomeActive(_ note: Notification) {
+    guard initialized, player.currentItem != nil else { return }
+    reassertActiveVideoOutput()
+    scheduleOutputRecheck(attempt: 0)
+  }
+
+  /// Re-parent again, with backoff, until the layer is actually drawing.
+  ///
+  /// `isReadyForDisplay` is the precise signal for the black-frame case: it is
+  /// false exactly while the layer has no displayable content, so it both ends
+  /// the retries the moment the picture is back and avoids re-parenting a
+  /// healthy layer (which would flicker). The attempt cap keeps a genuinely
+  /// dead item — one that will never produce a frame — from retrying forever.
+  private func scheduleOutputRecheck(attempt: Int) {
+    guard attempt < 5 else { return }
+    let delay = 0.15 * Double(attempt + 1)
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+      guard let self, self.initialized else { return }
+      // Only the native engine draws through the AVPlayerLayer; the WebView
+      // engine has its own view and nothing to recheck here.
+      guard self.engine == .exo, self.player.currentItem != nil else { return }
+      if self.hostView.playerLayer.isReadyForDisplay { return }
+      self.reassertActiveVideoOutput()
+      self.scheduleOutputRecheck(attempt: attempt + 1)
     }
   }
 
