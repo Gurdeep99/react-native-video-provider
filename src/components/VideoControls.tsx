@@ -59,6 +59,8 @@ export function VideoControls({
 }: VideoControlsProps) {
   const manager = useVideoManager();
   const playing = usePlayback((s) => s.playing);
+  const paused = usePlayback((s) => s.paused);
+  const status = usePlayback((s) => s.status);
   const buffering = usePlayback((s) => s.buffering);
   const loading = usePlayback((s) => s.loading);
   const position = usePlayback((s) => s.position);
@@ -116,6 +118,19 @@ export function VideoControls({
   // `paused` (not `buffering`), but the viewer should still see "No
   // Internet Connection" immediately rather than a frozen paused frame.
   const showOffline = !online && (loading || buffering || (live && !playing));
+
+  // Which half of the play/pause button to draw. `playing` alone isn't
+  // enough: it can lag the picture actually moving by a tick or two, which
+  // drew a play icon over a video that was already running — most visibly on
+  // live, where there's no seek bar to contradict it. So also treat the
+  // video as playing once playback has demonstrably started: past the 1%
+  // mark of a known duration, or any progress at all when the duration is
+  // unknown (live). `paused` is the viewer's own intent and always wins, so
+  // a deliberate pause flips back to play immediately; `ended` does too,
+  // since a finished video is stopped at its last frame, not playing.
+  const started = duration > 0 ? position / duration >= 0.01 : position > 0;
+  const showPauseIcon =
+    playing || (started && !paused && status !== 'ended');
 
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -219,20 +234,31 @@ export function VideoControls({
             {!live ? muteButton : <View />}
           </View>
 
-          {/* Center play/pause — hidden while the loader shows and hidden
-              entirely for live (only the loader appears). */}
-          {live || showLoader ? (
+          {/* Center play/pause — shown for live and on-demand alike, hidden
+              only while the loader occupies the same spot. */}
+          {showLoader ? (
             <View />
           ) : (
             <Pressable
               style={styles.playButton}
               onPress={() => {
-                manager.toggle();
+                // Driven by the same flag as the icon rather than
+                // manager.toggle(): toggle() reads the store's `playing`,
+                // which is exactly the value that can be stale here, so a
+                // tap on a pause icon would have called play() and looked
+                // like the button did nothing.
+                if (showPauseIcon) {
+                  manager.pause();
+                } else {
+                  manager.play();
+                }
                 scheduleHide();
               }}
               hitSlop={16}
+              accessibilityRole="button"
+              accessibilityLabel={showPauseIcon ? 'Pause' : 'Play'}
             >
-              {playing ? (
+              {showPauseIcon ? (
                 <SvgIcons icon="playPause" type="pause" size={34} fill="#fff" />
               ) : (
                 <SvgIcons icon="playPause" type="play" size={34} fill="#fff" />
@@ -282,33 +308,6 @@ export function VideoControls({
       ) : showLoader ? (
         <View style={styles.centerLoader} pointerEvents="none">
           <ActivityIndicator size="large" color="#fff" />
-        </View>
-      ) : live && !playing ? (
-        // Manual resume for live. A live source deliberately has no pause
-        // control, so when one stops there is otherwise nothing on screen to
-        // restart it — an audio-session interruption, a device lock, a render
-        // surface that came back dead, or a focus-resume that was blocked by
-        // the `userPaused` latch all leave it stopped and silent.
-        //
-        // Sits here with the loader rather than inside the auto-hiding chrome
-        // above: a stream that is stuck should not need a tap to reveal the
-        // controls before it can be recovered. Only reachable when there is
-        // nothing else to show — offline and loading both take precedence,
-        // since neither is the viewer's problem to solve.
-        //
-        // `play()` rather than `toggle()`: the only reason this is on screen
-        // is that playback has stopped, and play() additionally clears the
-        // engine's `userPaused` latch so a later focus-resume isn't blocked.
-        <View style={styles.centerLoader} pointerEvents="box-none">
-          <Pressable
-            style={styles.playButton}
-            onPress={() => manager.play()}
-            hitSlop={16}
-            accessibilityRole="button"
-            accessibilityLabel="Resume live video"
-          >
-            <SvgIcons icon="playPause" type="play" size={34} fill="#fff" />
-          </Pressable>
         </View>
       ) : null}
       {/* Live badges: top corners, above the controls, always visible while
